@@ -1,0 +1,32 @@
+{
+    "quotes": [
+      {
+        "id": "1",
+        "text": "Der einzige Weg, großartige Arbeit zu leisten, ist zu lieben, was du tust.",
+        "author": "Steve Jobs",
+        "category": "motivation"
+      },
+      {
+        "id": "2",
+        "text": "Fokus",
+        "category": "focus"
+      },
+      {
+        "id": "3",
+        "text": "Kleine Schritte jeden Tag führen zu großen Veränderungen.",
+        "category": "motivation"
+      },
+      {
+        "id": "4",
+        "text": "Disziplin ist die Brücke zwischen Zielen und Erfolg.",
+        "author": "Jim Rohn",
+        "category": "wisdom"
+      },
+      {
+        "id": "5",
+        "text": "Was du heute tust, kann dein Morgen verbessern.",
+        "category": "gratitude"
+      }
+    ]
+  }
+ 
