@@ -1,5 +1,7 @@
 // app/(tabs)/today.tsx
 import { HabitCard } from "@/components/habits/HabitCard";
+import { MenuSheet } from "@/components/today/MenuSheet";
+import { OnboardingModal } from "@/components/today/OnboardingModal";
 import { PlannerEntryItem } from "@/components/today/PlannerEntryItem";
 import { QuoteOfTheDay } from "@/components/today/QuoteOfTheDay";
 import { TodayEmptyState } from "@/components/today/TodayEmptyState";
@@ -7,8 +9,10 @@ import { TodayStatsCard } from "@/components/today/TodayStatsCard";
 import { THEME } from "@/constants/theme";
 import { usePlannerDay } from "@/hooks/planner/usePlanner";
 import { useHabits } from "@/hooks/useHabits";
+import { useUserStore } from "@/store/userStore";
 import { dateToLocalString } from "@/utils/dateUtils";
 import { isScheduledForToday } from "@/utils/scheduleUtils";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -19,10 +23,19 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TodayScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  const { name, hasOnboarded, loadUser } = useUserStore();
+
+  // useEffect(() => {
+  //   loadUser();
+  // }, []);
 
   const {
     habits,
@@ -41,22 +54,22 @@ export default function TodayScreen() {
   }
 
   const hour = new Date().getHours();
-  const greeting =
-    hour < 12 ? "Guten Morgen" : hour < 18 ? "Guten Tag" : "Guten Abend";
+  const greetingWord = hour < 12 ? "Morgen" : hour < 18 ? "Tag" : "Abend";
+  const greeting = name
+    ? `Guten ${greetingWord}, ${name}`
+    : `Guten ${greetingWord}`;
   const dateLabel = new Date().toLocaleDateString("de-DE", {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
 
-  // ── Habits nach heute / nicht heute trennen ──────────────────────────────
   const todayHabits = habits.filter(({ habit }) =>
     isScheduledForToday(habit.schedule)
   );
   const otherHabits = habits.filter(
     ({ habit }) => !isScheduledForToday(habit.schedule)
   );
-
   const habitsCompletedToday = todayHabits.filter((h) => h.completed).length;
   const habitsTotalToday = todayHabits.length;
 
@@ -92,12 +105,29 @@ export default function TodayScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* ── Onboarding ── */}
+      <OnboardingModal visible={!hasOnboarded} />
+
+      {/* ── Menü ── */}
+      <MenuSheet visible={menuVisible} onClose={() => setMenuVisible(false)} />
+
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* ── HEADER ── */}
         <View style={styles.header}>
-          <Text style={styles.greeting}>{greeting}</Text>
-          <Text style={styles.dateLabel}>{dateLabel}</Text>
+          <View style={styles.headerLeft}>
+            <Text style={styles.greeting} numberOfLines={1}>
+              {greeting}
+            </Text>
+            <Text style={styles.dateLabel}>{dateLabel}</Text>
+          </View>
+          <Pressable
+            onPress={() => setMenuVisible(true)}
+            style={styles.menuBtn}
+            hitSlop={8}
+          >
+            <Ionicons name="ellipsis-horizontal" size={18} color="#475569" />
+          </Pressable>
         </View>
 
         <View style={styles.scrollContent}>
@@ -130,7 +160,7 @@ export default function TodayScreen() {
           {/* ── QUOTE ── */}
           <QuoteOfTheDay />
 
-          {/* ── HEUTE FÄLLIGE HABITS ── */}
+          {/* ── HABITS ── */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View>
@@ -165,29 +195,23 @@ export default function TodayScreen() {
               </View>
             ) : (
               <View style={styles.habitsList}>
-                {todayHabits.map(renderHabitCard)}
+                {todayHabits.map((h) => renderHabitCard(h))}
+              </View>
+            )}
+
+            {otherHabits.length > 0 && (
+              <View style={[styles.section, { marginTop: 20 }]}>
+                <Text style={[styles.sectionTitle, styles.sectionTitleMuted]}>
+                  Weitere Habits
+                </Text>
+                <View style={[styles.habitsList, styles.habitsListMuted]}>
+                  {otherHabits.map((h) => renderHabitCard(h))}
+                </View>
               </View>
             )}
           </View>
 
-          {/* ── WEITERE HABITS (nicht heute) ── */}
-          {otherHabits.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View>
-                  <Text style={[styles.sectionTitle, styles.sectionTitleMuted]}>
-                    Weitere Habits
-                  </Text>
-                  <Text style={styles.sectionSubtitle}>Heute nicht fällig</Text>
-                </View>
-              </View>
-              <View style={[styles.habitsList, styles.habitsListMuted]}>
-                {otherHabits.map(renderHabitCard)}
-              </View>
-            </View>
-          )}
-
-          {/* ── PLANNER ── */}
+          {/* ── PLANNER HEUTE ── */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View>
@@ -250,7 +274,8 @@ export default function TodayScreen() {
                 onPress={() => router.push("/(tabs)/planner")}
                 style={styles.plannerLink}
               >
-                <Text style={styles.plannerLinkText}>Zum Planner →</Text>
+                <Text style={styles.plannerLinkText}>Zum Planner</Text>
+                <Ionicons name="arrow-forward" size={14} color="#3b8995" />
               </Pressable>
             )}
           </View>
@@ -271,25 +296,38 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8f9fb",
   },
 
+  // Header
   header: {
-    paddingTop: 20,
-    paddingBottom: 24,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingTop: 16,
+    paddingBottom: 20,
     paddingHorizontal: 24,
     backgroundColor: "white",
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
   },
+  headerLeft: { flex: 1, gap: 2 },
   greeting: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "700",
     color: "#0f172a",
     letterSpacing: -0.5,
-    marginBottom: 2,
   },
-  dateLabel: { fontSize: 15, color: "#64748b", fontWeight: "400" },
+  dateLabel: { fontSize: 14, color: "#64748b", fontWeight: "400" },
+  menuBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 12,
+    marginTop: 2,
+  },
 
   scrollContent: { paddingHorizontal: 20, paddingTop: 20 },
-
   statsContainer: { flexDirection: "row", gap: 12, marginBottom: 16 },
 
   section: { marginBottom: 28 },
@@ -343,11 +381,13 @@ const styles = StyleSheet.create({
     padding: 14,
     backgroundColor: "white",
     borderRadius: 12,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
   plannerLinkText: { fontSize: 14, fontWeight: "600", color: "#3b8995" },
-
   bottomSpacer: { height: 40 },
 });
