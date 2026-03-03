@@ -187,12 +187,15 @@ export function DateTimeField({
             borderRadius: 10,
             marginBottom: 12,
             overflow: "hidden",
+            backgroundColor: "white",
           }}
         >
           <DateTimePicker
             value={minutesToDate(startMinutes)}
             mode="time"
             display="spinner"
+            textColor="#111111" // ← NEU: erzwingt dunkle Schrift
+            themeVariant="light" // ← NEU: immer Light Mode
             onChange={(_, selected) => {
               if (!selected) return;
               onChangeTime(selected.getHours() * 60 + selected.getMinutes());

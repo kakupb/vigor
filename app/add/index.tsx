@@ -119,6 +119,7 @@ export default function AddHabitScreen() {
           s.content,
           { paddingBottom: insets.bottom + 40 },
         ]}
+        keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

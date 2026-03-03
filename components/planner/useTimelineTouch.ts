@@ -24,8 +24,8 @@ export function useTimelineTouch({
   onScrollLockChange,
   onAutoScroll,
   longPressDuration = 1500,
-  movementThreshold = 10,
-  highlightDelay = 500,
+  movementThreshold = 18,
+  highlightDelay = 400,
   autoScrollEdgeThreshold = 110,
 }: UseTimelineTouchProps) {
   const [highlightedSlot, setHighlightedSlot] = useState<TouchSlot | null>(

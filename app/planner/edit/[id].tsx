@@ -209,7 +209,10 @@ export default function PlannerEditScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 100 }}
+        keyboardDismissMode="on-drag"
+      >
         {/* Titel */}
         <TextInput
           placeholder="Titel"

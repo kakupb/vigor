@@ -137,7 +137,13 @@ export function HabitCard({
                   <Text style={styles.streakText}>{streak}</Text>
                 </View>
               )}
-              <View
+              {/* ← NEU: onPress direkt togglen statt expandieren */}
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  handleToggle(); // direkt abhaken!
+                }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={[
                   styles.progressCircle,
                   {
@@ -151,7 +157,7 @@ export function HabitCard({
                 {completed && (
                   <Ionicons name="checkmark" size={14} color="white" />
                 )}
-              </View>
+              </Pressable>
             </View>
           </View>
         )}

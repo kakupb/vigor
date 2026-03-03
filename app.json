@@ -47,7 +47,8 @@
           "NSHealthShareUsageDescription": "Deine Gesundheitsdaten helfen dir, bessere Habits aufzubauen.",
           "NSHealthUpdateUsageDescription": "Workouts und Aktivitäten werden mit deinen Habits verknüpft."
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true

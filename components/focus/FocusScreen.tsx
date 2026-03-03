@@ -1,12 +1,13 @@
 // components/focus/FocusScreen.tsx
 import { usePomodoro } from "@/hooks/usePomodoro";
-import { getCurrentEntry, getSlothMood } from "@/services/focusService";
+import { getSlothMood } from "@/services/focusService";
 import { useFocusStore } from "@/store/focusStore";
 import { PlannerEntry } from "@/types/planner";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { ResizeMode, Video } from "expo-av";
 import * as Crypto from "expo-crypto";
+import { VideoView, useVideoPlayer } from "expo-video";
 import { useEffect, useRef, useState } from "react";
+
 import {
   Animated,
   Modal,
@@ -39,7 +40,14 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
   // Track which phase we're in via ref so the interval closure is never stale
   const phaseRef = useRef(0);
   const shakeLoopRef = useRef<Animated.CompositeAnimation | null>(null);
-  const videoRef = useRef<Video>(null);
+  const player = useVideoPlayer(
+    require("@/assets/videos/sloth-working-hq.mp4"),
+    (p) => {
+      p.loop = true;
+      p.muted = !soundEnabled;
+      p.play();
+    }
+  );
 
   const slothMood = getSlothMood(currentEntry?.category);
 
@@ -53,13 +61,8 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
 
   // Find current entry
   useEffect(() => {
-    setCurrentEntry(getCurrentEntry(entries));
-    const t = setInterval(
-      () => setCurrentEntry(getCurrentEntry(entries)),
-      60000
-    );
-    return () => clearInterval(t);
-  }, [entries]);
+    player.muted = !soundEnabled;
+  }, [soundEnabled, player]);
 
   // ── Phase transitions ──
   function enterPhase1() {
@@ -293,6 +296,8 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
         style={styles.container}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
+        delayLongPress={100}
+        android_disableSound={true}
       >
         {/* ── Video: zooms + shakes ── */}
         <Animated.View
@@ -301,14 +306,11 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
             { transform: [{ scale: videoScale }, { translateX: shakeX }] },
           ]}
         >
-          <Video
-            ref={videoRef}
-            source={require("@/assets/videos/sloth-working-hq.mp4")}
+          <VideoView
+            player={player}
             style={styles.video}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay
-            isLooping
-            isMuted={!soundEnabled}
+            contentFit="contain"
+            nativeControls={false}
           />
         </Animated.View>
 
@@ -337,7 +339,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
             {stats.currentStreak > 0 && !isExiting && (
               <View style={styles.streakBadge}>
                 <Text style={styles.streakText}>
-                  🔥 {stats.currentStreak} Tage
                   <MaterialCommunityIcons
                     name="fire"
                     size={20}
@@ -574,7 +575,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   entryTime: { fontSize: 13, color: "rgba(255,255,255,0.7)" },
-  progressWrapper: { width: "100%", marginBottom: 12 },
+  progressWrapper: { width: "100%", marginBottom: 12, paddingBottom: 8 },
   progressBar: {
     width: "100%",
     height: 6,

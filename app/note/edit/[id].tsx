@@ -336,6 +336,7 @@ export default function EditNoteScreen() {
         style={styles.editor}
         contentContainerStyle={styles.editorContent}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {/* Titel */}

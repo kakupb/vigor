@@ -1,7 +1,12 @@
 // app/_layout.tsx
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { LogBox } from "react-native";
 
+LogBox.ignoreLogs([
+  "com.apple.healthkit Code=5",
+  "Authorization not determined",
+]);
 export default function RootLayout() {
   return (
     <>

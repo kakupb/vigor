@@ -9,8 +9,9 @@ import {
   MetricId,
   useHealthMetricsStore,
 } from "@/store/healthMetricsStore";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { WorkoutHistoryModal } from "./WorkoutHistoryModal";
 
 // ─── Metric Karte ─────────────────────────────────────────────────────────────
 function HealthMetric({
@@ -34,6 +35,7 @@ function HealthMetric({
 }) {
   const displayValue =
     unit === "Schritte" ? value.toLocaleString("de-DE") : value;
+
   return (
     <View style={[hm.card, { backgroundColor: bg }]}>
       <View style={hm.cardTop}>
@@ -184,16 +186,6 @@ function ConfigureTab() {
           );
         })}
       </View>
-      <View style={cfg.futureBox}>
-        <Text style={cfg.futureTitle}>🔗 Habits verknüpfen</Text>
-        <Text style={cfg.futureDesc}>
-          Bald: Erstelle automatisch Habits aus deinen Gesundheitsdaten – z.B.
-          "10.000 Schritte" direkt aus der Fitness App.
-        </Text>
-        <View style={cfg.futureBadge}>
-          <Text style={cfg.futureBadgeText}>Kommt bald</Text>
-        </View>
-      </View>
     </View>
   );
 }
@@ -251,6 +243,8 @@ const cfg = StyleSheet.create({
 function HealthDataContent({ onConfigure }: { onConfigure: () => void }) {
   const health = useHealthValues();
   const { enabledMetrics, goals } = useHealthMetricsStore();
+  const [workoutHistoryVisible, setWorkoutHistoryVisible] = useState(false);
+
   const activeMetrics = ALL_METRICS.filter((m) =>
     enabledMetrics.includes(m.id)
   );
@@ -274,13 +268,38 @@ function HealthDataContent({ onConfigure }: { onConfigure: () => void }) {
 
   return (
     <View style={{ gap: 12 }}>
-      {/* Letztes Workout aus Fitness App */}
+      {/* Letztes Workout – nur wenn vorhanden */}
       {health.lastWorkout && (
         <View style={{ gap: 6 }}>
           <Text style={s.sectionLabel}>Letztes Workout · Fitness App</Text>
           <LastWorkoutCard workout={health.lastWorkout} />
         </View>
       )}
+
+      {/* ✅ Workout-Import Button – IMMER sichtbar, unabhängig von lastWorkout */}
+      <Pressable
+        onPress={() => setWorkoutHistoryVisible(true)}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          paddingVertical: 12,
+          backgroundColor: "#f0f4ff",
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: "#c7d2fe",
+        }}
+      >
+        <Text style={{ fontSize: 14, fontWeight: "700", color: "#4b60af" }}>
+          🏋️ Alle Trainings · Importieren
+        </Text>
+      </Pressable>
+
+      {/* Modal außerhalb des Buttons, aber innerhalb der Komponente */}
+      <WorkoutHistoryModal
+        visible={workoutHistoryVisible}
+        onClose={() => setWorkoutHistoryVisible(false)}
+      />
 
       {/* Metriken */}
       {activeMetrics.length === 0 ? (
@@ -322,7 +341,18 @@ function HealthDataContent({ onConfigure }: { onConfigure: () => void }) {
 export function HealthSection() {
   const { isAvailable, isAuthorized, requestAuth } = useHealthAuth();
   const [tab, setTab] = useState<"data" | "configure">("data");
+  const [authChecked, setAuthChecked] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setAuthChecked(true), 300);
+    return () => clearTimeout(t);
+  }, []);
 
+  if (!isAvailable || Platform.OS !== "ios") return null;
+  if (!authChecked) return null; // ← Verhindert den Fehler
+
+  if (!isAuthorized) {
+    // ... Connect-Screen
+  }
   if (!isAvailable || Platform.OS !== "ios") return null;
 
   if (!isAuthorized) {

@@ -164,6 +164,7 @@ export default function NewNoteScreen() {
         style={styles.editor}
         contentContainerStyle={styles.editorContent}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         <TextInput
