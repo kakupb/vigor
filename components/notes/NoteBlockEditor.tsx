@@ -1,4 +1,5 @@
 // components/notes/NoteBlockEditor.tsx
+import { copyImageToPersistentStorage } from "@/services/imageStorage";
 import {
   NoteBlock,
   NoteImageBlock,
@@ -13,6 +14,7 @@ import {
   Alert,
   Dimensions,
   Image,
+  Linking,
   Modal,
   PanResponder,
   Pressable,
@@ -191,29 +193,52 @@ export const NoteBlockEditor = forwardRef<NoteBlockEditorRef, Props>(
       const permFn = fromCamera
         ? ImagePicker.requestCameraPermissionsAsync
         : ImagePicker.requestMediaLibraryPermissionsAsync;
-      const { status } = await permFn();
+
+      const { status, canAskAgain } = await permFn();
       if (status !== "granted") {
-        Alert.alert(
-          "Zugriff benötigt",
-          "Bitte erlaube den Zugriff in den Einstellungen."
-        );
+        if (!canAskAgain) {
+          Alert.alert(
+            "Zugriff verweigert",
+            "Bitte erlaube den Zugriff unter Einstellungen > HabitTracker.",
+            [
+              { text: "Abbrechen", style: "cancel" },
+              { text: "Einstellungen", onPress: () => Linking.openSettings() },
+            ]
+          );
+        } else {
+          Alert.alert(
+            "Zugriff benötigt",
+            "Bitte erlaube den Zugriff in den Einstellungen."
+          );
+        }
         return;
       }
+
       const result = fromCamera
-        ? await ImagePicker.launchCameraAsync({ quality: 0.8 })
+        ? await ImagePicker.launchCameraAsync({ quality: 0.85 })
         : await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ["images"], // ✅ Ersetzt deprecated MediaTypeOptions.Images
             allowsMultipleSelection: true,
-            quality: 0.8,
+            quality: 0.85,
           });
+
       if (result.canceled) return;
-      const newImages: NoteImageBlock[] = result.assets.map((a) => ({
-        id: makeId(),
-        type: "image",
-        uri: a.uri,
-        size: DEFAULT_IMAGE_SIZE,
-        createdAt: Date.now(),
-      }));
+
+      // ✅ Bilder in persistenten Speicher kopieren
+      const newImages: NoteImageBlock[] = await Promise.all(
+        result.assets.map(async (a) => {
+          const id = makeId();
+          const persistentUri = await copyImageToPersistentStorage(a.uri, id);
+          return {
+            id,
+            type: "image" as const,
+            uri: persistentUri,
+            size: DEFAULT_IMAGE_SIZE,
+            createdAt: Date.now(),
+          };
+        })
+      );
+
       onBlocksChange([...blocks, ...newImages]);
     }
 

@@ -1,30 +1,46 @@
-///Users/yakupadar/code_projects/HabitTracker/app/planner/add.tsx
+// app/planner/add.tsx
 import { CategorySelector } from "@/components/planner/CategorySelector";
 import { DateTimeField } from "@/components/planner/DateTimeField";
 import { getCategoryConfig } from "@/constants/categories";
 import { usePlannerStore } from "@/store/plannerStore";
 import { PlannerCategory } from "@/types/planner";
-import {
-  dateToLocalString,
-  getTodayTimestamp,
-  minutesToTime,
-} from "@/utils/dateUtils";
+import { dateToLocalString, minutesToTime } from "@/utils/dateUtils";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const DURATION_SHORTCUTS = [15, 30, 45, 60, 90, 120];
+
+function getNextHalfHour() {
+  const now = new Date();
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  return Math.ceil(minutes / 30) * 30;
+}
 
 export default function PlannerAddScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const addEntry = usePlannerStore((s) => s.addEntry);
   const params = useLocalSearchParams();
+
   const initialDate =
     typeof params.date === "string"
       ? params.date
       : dateToLocalString(new Date());
-
   const initialStartTime =
     typeof params.startTime === "string" ? params.startTime : undefined;
-
   const initialEndTime =
     typeof params.endTime === "string" ? params.endTime : undefined;
 
@@ -34,295 +50,339 @@ export default function PlannerAddScreen() {
   const [category, setCategory] = useState<PlannerCategory | undefined>(
     undefined
   );
-  const color = getCategoryConfig(category).color;
 
   const [selectedStartDate, setSelectedStartDate] = useState(initialDate);
   const [startMinutes, setStartMinutes] = useState(() => {
     if (initialStartTime) {
-      const [hours, mins] = initialStartTime.split(":").map(Number);
-      return hours * 60 + mins;
+      const [h, m] = initialStartTime.split(":").map(Number);
+      return h * 60 + m;
     }
     return getNextHalfHour();
   });
-
   const [selectedEndDate, setSelectedEndDate] = useState(initialDate);
   const [endMinutes, setEndMinutes] = useState(() => {
     if (initialEndTime) {
-      const [hours, mins] = initialEndTime.split(":").map(Number);
-      return hours * 60 + mins;
+      const [h, m] = initialEndTime.split(":").map(Number);
+      return h * 60 + m;
     }
-    return startMinutes + 30;
+    return getNextHalfHour() + 30;
   });
   const [durationMinutes, setDurationMinutes] = useState(() => {
     if (initialStartTime && initialEndTime) {
-      const [startH, startM] = initialStartTime.split(":").map(Number);
-      const [endH, endM] = initialEndTime.split(":").map(Number);
-      return endH * 60 + endM - (startH * 60 + startM);
+      const [sh, sm] = initialStartTime.split(":").map(Number);
+      const [eh, em] = initialEndTime.split(":").map(Number);
+      return eh * 60 + em - (sh * 60 + sm);
     }
     return 30;
   });
+
   type TimeSource = "start" | "duration" | "end";
   const [lastChanged, setLastChanged] = useState<TimeSource>("start");
 
   useEffect(() => {
-    syncEndFromStartAndDuration(
-      selectedStartDate,
-      startMinutes,
-      durationMinutes
-    );
+    syncEndFromStart(selectedStartDate, startMinutes, durationMinutes);
   }, []);
 
-  function getNextHalfHour() {
-    const now = new Date();
-    const minutes = now.getHours() * 60 + now.getMinutes();
-    return Math.ceil(minutes / 30) * 30;
+  function syncEndFromStart(date: string, start: number, dur: number) {
+    const total = start + dur;
+    const dayOffset = Math.floor(total / 1440);
+    const em = total % 1440;
+    const d = new Date(date);
+    d.setDate(d.getDate() + dayOffset);
+    setSelectedEndDate(dateToLocalString(d));
+    setEndMinutes(em);
   }
 
-  function handleSave() {
-    if (!title.trim()) return;
+  function syncDurationFromEnd(
+    startDate: string,
+    start: number,
+    endDate: string,
+    end: number
+  ) {
+    const startMs = new Date(startDate).getTime() + start * 60000;
+    const endMs = new Date(endDate).getTime() + end * 60000;
+    const dur = Math.max(15, Math.round((endMs - startMs) / 60000));
+    setDurationMinutes(dur);
+  }
 
+  const color = getCategoryConfig(category).color;
+  const canSave = title.trim().length > 0;
+
+  function handleSave() {
+    if (!canSave) {
+      Alert.alert("Titel fehlt", "Bitte gib einen Titel ein.");
+      return;
+    }
     addEntry({
       title: title.trim(),
-      color: color,
+      color,
       date: selectedStartDate,
       startTime: allDay ? undefined : minutesToTime(startMinutes),
+      endTime: allDay ? undefined : minutesToTime(endMinutes),
+      endDate: allDay ? undefined : selectedEndDate,
       durationMinute: allDay ? undefined : durationMinutes,
-      note: note.trim(),
-      category: category, // ✅ This is here
+      note: note.trim() || undefined,
+      category,
     });
-
     router.back();
   }
 
-  // Anzeigelogik End-Zeit
-  function computeEndFromStartAndDuration(
-    date: string,
-    startMinutes: number,
-    duration: number
-  ) {
-    const total = startMinutes + duration;
-    const dayOffset = Math.floor(total / 1440);
-    const endMinutes = total % 1440;
-
-    const d = new Date(date);
-    d.setDate(d.getDate() + dayOffset);
-
-    return {
-      selectedEndDate: dateToLocalString(d),
-      endMinutes,
-    };
-  }
-
-  function computeDurationFromStartAndEnd(
-    startDate: string,
-    startMinutes: number,
-    selectedEndDate: string,
-    endMinutes: number
-  ) {
-    const dayDiff =
-      (getTodayTimestamp(selectedEndDate) - getTodayTimestamp(startDate)) /
-      (1000 * 60 * 60 * 24);
-
-    return dayDiff * 1440 + (endMinutes - startMinutes);
-  }
-
-  function syncEndFromStartAndDuration(
-    date: string,
-    startMinutes: number,
-    duration: number
-  ) {
-    const { selectedEndDate, endMinutes } = computeEndFromStartAndDuration(
-      date,
-      startMinutes,
-      duration
-    );
-
-    setSelectedEndDate(selectedEndDate);
-    setEndMinutes(endMinutes);
-  }
-
-  function syncDurationFromStartAndEnd(
-    startDate: string,
-    startMinutes: number,
-    endDate: string,
-    endMinutes: number
-  ) {
-    const d = computeDurationFromStartAndEnd(
-      startDate,
-      startMinutes,
-      endDate,
-      endMinutes
-    );
-
-    setDurationMinutes(d);
-  }
-
   return (
-    <View style={{ flex: 1, padding: 20, justifyContent: "space-between" }}>
-      <Text style={{ fontSize: 22, fontWeight: "600", marginBottom: 20 }}>
-        Neuer Eintrag
-      </Text>
+    <KeyboardAvoidingView
+      style={s.root}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      {/* Header */}
+      <View style={[s.header, { paddingTop: insets.top + 12 }]}>
+        <Pressable
+          onPress={() => router.back()}
+          style={s.headerBtn}
+          hitSlop={8}
+        >
+          <Ionicons name="close" size={20} color="#64748b" />
+        </Pressable>
+        <Text style={s.headerTitle}>Neuer Eintrag</Text>
+        <Pressable
+          onPress={handleSave}
+          disabled={!canSave}
+          style={[s.saveBtn, !canSave && s.saveBtnOff]}
+        >
+          <Text style={[s.saveBtnText, !canSave && s.saveBtnTextOff]}>
+            Speichern
+          </Text>
+        </Pressable>
+      </View>
 
       <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 8,
-          paddingBottom: 120,
-          justifyContent: "space-between",
-        }}
+        style={s.scroll}
+        contentContainerStyle={[
+          s.content,
+          { paddingBottom: insets.bottom + 40 },
+        ]}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <>
+        {/* Titel */}
+        <View style={s.card}>
           <TextInput
+            style={s.titleInput}
             placeholder="Titel"
+            placeholderTextColor="#94a3b8"
             value={title}
             onChangeText={setTitle}
-            style={{
-              borderWidth: 1,
-              borderColor: "#999",
-              borderRadius: 8,
-              padding: 12,
-              marginBottom: 30,
-            }}
+            autoFocus
+            returnKeyType="done"
+            maxLength={80}
           />
-          <View style={{ marginBottom: 16 }}>
-            <CategorySelector selected={category} onSelect={setCategory} />
-          </View>
-          <Pressable
-            onPress={() => setAllDay((v) => !v)}
-            style={{
-              padding: 14,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: "#999",
-              backgroundColor: allDay ? "#888" : "transparent",
-              width: 95,
-              marginBottom: 10,
-            }}
-          >
-            <Text
-              style={{
-                color: allDay ? "white" : "#777",
-                fontWeight: "600",
-                fontSize: 12,
-              }}
-            >
-              Ganztägig
-            </Text>
-          </Pressable>
+        </View>
 
-          <Text style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
-            Start
-          </Text>
-          <DateTimeField
-            date={selectedStartDate}
-            startMinutes={startMinutes}
-            allDay={allDay}
-            onChangeDate={(d) => {
-              setSelectedStartDate(d);
-              setLastChanged("start");
-              if (lastChanged !== "end") {
-                syncEndFromStartAndDuration(d, startMinutes, durationMinutes);
-              }
-            }}
-            onChangeTime={(m) => {
-              setStartMinutes(m);
-              setLastChanged("start");
-              if (lastChanged !== "end") {
-                syncEndFromStartAndDuration(
-                  selectedStartDate,
-                  m,
-                  durationMinutes
-                );
-              }
-            }}
-          />
+        {/* Kategorie */}
+        <View style={s.card}>
+          <Text style={s.label}>Kategorie</Text>
+          <CategorySelector selected={category} onSelect={setCategory} />
+        </View>
+
+        {/* Zeit */}
+        <View style={s.card}>
+          <View style={s.rowBetween}>
+            <Text style={s.label}>Zeit</Text>
+            <Pressable
+              onPress={() => setAllDay((v) => !v)}
+              style={[s.pill, allDay && s.pillActive]}
+            >
+              <Text style={[s.pillText, allDay && s.pillTextActive]}>
+                Ganztägig
+              </Text>
+            </Pressable>
+          </View>
 
           {!allDay && (
             <>
-              <Text style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
-                Dauer
-              </Text>
-              <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
-                {[30, 45, 60].map((d) => (
+              <Text style={s.sublabel}>Start</Text>
+              <DateTimeField
+                date={selectedStartDate}
+                startMinutes={startMinutes}
+                allDay={false}
+                onChangeDate={(d) => {
+                  setSelectedStartDate(d);
+                  setLastChanged("start");
+                  syncEndFromStart(d, startMinutes, durationMinutes);
+                }}
+                onChangeTime={(m) => {
+                  setStartMinutes(m);
+                  setLastChanged("start");
+                  syncEndFromStart(selectedStartDate, m, durationMinutes);
+                }}
+              />
+
+              <Text style={[s.sublabel, { marginTop: 14 }]}>Dauer</Text>
+              <View style={s.durationRow}>
+                {DURATION_SHORTCUTS.map((d) => (
                   <Pressable
                     key={d}
                     onPress={() => {
                       setDurationMinutes(d);
                       setLastChanged("duration");
-                      syncEndFromStartAndDuration(
-                        selectedStartDate,
-                        startMinutes,
-                        d
-                      );
+                      syncEndFromStart(selectedStartDate, startMinutes, d);
                     }}
-                    style={{
-                      paddingVertical: 6,
-                      paddingHorizontal: 10,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: durationMinutes === d ? "#111" : "#ccc",
-                    }}
+                    style={[
+                      s.durationChip,
+                      durationMinutes === d && s.durationChipActive,
+                    ]}
                   >
-                    <Text style={{ fontSize: 12 }}>{d} min</Text>
+                    <Text
+                      style={[
+                        s.durationChipText,
+                        durationMinutes === d && s.durationChipTextActive,
+                      ]}
+                    >
+                      {d < 60 ? `${d}m` : `${d / 60}h`}
+                    </Text>
                   </Pressable>
                 ))}
               </View>
+
+              <Text style={[s.sublabel, { marginTop: 14 }]}>Ende</Text>
+              <DateTimeField
+                date={selectedEndDate}
+                startMinutes={endMinutes}
+                allDay={false}
+                onChangeDate={(d) => {
+                  setSelectedEndDate(d);
+                  setLastChanged("end");
+                  syncDurationFromEnd(
+                    selectedStartDate,
+                    startMinutes,
+                    d,
+                    endMinutes
+                  );
+                }}
+                onChangeTime={(m) => {
+                  setEndMinutes(m);
+                  setLastChanged("end");
+                  syncDurationFromEnd(
+                    selectedStartDate,
+                    startMinutes,
+                    selectedEndDate,
+                    m
+                  );
+                }}
+              />
             </>
           )}
+        </View>
 
-          {/* Ende */}
-          <DateTimeField
-            date={selectedEndDate}
-            startMinutes={endMinutes}
-            allDay={allDay}
-            onChangeDate={(d) => {
-              setSelectedEndDate(d);
-              setLastChanged("end");
-              syncDurationFromStartAndEnd(
-                selectedStartDate,
-                startMinutes,
-                d,
-                endMinutes
-              );
-            }}
-            onChangeTime={(m) => {
-              setEndMinutes(m);
-              setLastChanged("end");
-              syncDurationFromStartAndEnd(
-                selectedStartDate,
-                startMinutes,
-                selectedEndDate,
-                m
-              );
-            }}
-          />
+        {/* Notiz */}
+        <View style={s.card}>
+          <Text style={s.label}>Notiz</Text>
           <TextInput
-            placeholder="Notizen"
+            style={s.noteInput}
+            placeholder="Optionale Notiz…"
+            placeholderTextColor="#94a3b8"
             value={note}
             onChangeText={setNote}
             multiline
-            style={{
-              minHeight: 140,
-              padding: 12,
-              borderWidth: 1,
-              borderRadius: 8,
-              borderColor: "#999",
-              marginTop: 50,
-            }}
+            textAlignVertical="top"
           />
-        </>
+        </View>
       </ScrollView>
-      <Pressable
-        onPress={handleSave}
-        style={{
-          padding: 18,
-          backgroundColor: "#111",
-          borderRadius: 10,
-          marginBottom: 30,
-        }}
-      >
-        <Text style={{ color: "white", textAlign: "center" }}>Speichern</Text>
-      </Pressable>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: "#f8f9fb" },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: "white",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e2e8f0",
+  },
+  headerBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitle: { fontSize: 16, fontWeight: "700", color: "#0f172a" },
+  saveBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: "#3b8995",
+    borderRadius: 20,
+  },
+  saveBtnOff: { backgroundColor: "#e2e8f0" },
+  saveBtnText: { color: "white", fontWeight: "700", fontSize: 14 },
+  saveBtnTextOff: { color: "#94a3b8" },
+  scroll: { flex: 1 },
+  content: { padding: 16, gap: 12 },
+  card: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 10,
+  },
+  sublabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#64748b",
+    marginBottom: 6,
+  },
+  titleInput: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#0f172a",
+    paddingVertical: 4,
+  },
+  rowBetween: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  pill: {
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+  },
+  pillActive: { backgroundColor: "#3b8995", borderColor: "#3b8995" },
+  pillText: { fontSize: 13, fontWeight: "600", color: "#64748b" },
+  pillTextActive: { color: "white" },
+  durationRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  durationChip: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8f9fb",
+  },
+  durationChipActive: { borderColor: "#3b8995", backgroundColor: "#f0fbfc" },
+  durationChipText: { fontSize: 13, fontWeight: "600", color: "#64748b" },
+  durationChipTextActive: { color: "#3b8995" },
+  noteInput: {
+    fontSize: 15,
+    color: "#0f172a",
+    minHeight: 80,
+    paddingTop: 4,
+  },
+});

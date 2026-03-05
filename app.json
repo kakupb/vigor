@@ -9,7 +9,18 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.habittracker"
+      "bundleIdentifier": "com.anonymous.habittracker",
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": []
+      },
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "HabitTracker verwendet deine Fotobibliothek, um Bilder zu Notizen hinzuzufügen.",
+        "NSPhotoLibraryAddUsageDescription": "HabitTracker speichert Bilder aus der App in deiner Fotobibliothek.",
+        "NSCameraUsageDescription": "HabitTracker verwendet die Kamera, um Fotos direkt in Notizen einzufügen.",
+        "NSMicrophoneUsageDescription": "Das Mikrofon wird für Videoaufnahmen benötigt, die in Notizen eingebettet werden.",
+        "NSUserTrackingUsageDescription": "HabitTracker verfolgt dich nicht. Diese Beschreibung ist aus technischen Gründen erforderlich."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -20,7 +31,12 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.habittracker"
+      "package": "com.anonymous.habittracker",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "output": "static",
@@ -42,10 +58,26 @@
       ],
       "expo-font",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "HabitTracker verwendet deine Fotobibliothek, um Bilder zu Notizen hinzuzufügen.",
+          "cameraPermission": "HabitTracker verwendet die Kamera, um Fotos direkt in Notizen einzufügen.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#3b8995",
+          "sounds": []
+        }
+      ],
+      [
         "@kingstinct/react-native-healthkit",
         {
-          "NSHealthShareUsageDescription": "Deine Gesundheitsdaten helfen dir, bessere Habits aufzubauen.",
-          "NSHealthUpdateUsageDescription": "Workouts und Aktivitäten werden mit deinen Habits verknüpft."
+          "NSHealthShareUsageDescription": "HabitTracker liest Workout- und Aktivitätsdaten aus Apple Health, damit du Trainings in deinen Planner importieren und Gesundheitsmetriken in der Analyse sehen kannst.",
+          "NSHealthUpdateUsageDescription": "HabitTracker schreibt keine Daten in Apple Health."
         }
       ],
       "expo-video"
