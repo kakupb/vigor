@@ -55,8 +55,9 @@ export default function TodayScreen() {
 
   const hour = new Date().getHours();
   const greetingWord = hour < 12 ? "Morgen" : hour < 18 ? "Tag" : "Abend";
-  const greeting = name
-    ? `Guten ${greetingWord}, ${name}`
+  const displayName = name && name !== "_onboarded" ? name : null;
+  const greeting = displayName
+    ? `Guten ${greetingWord}, ${displayName}`
     : `Guten ${greetingWord}`;
   const dateLabel = new Date().toLocaleDateString("de-DE", {
     weekday: "long",

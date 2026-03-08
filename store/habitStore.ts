@@ -1,16 +1,47 @@
 // store/habitStore.ts
+// Schreibt Habits lokal (AsyncStorage) + in Supabase.
+// Offline-first: lokale Änderungen sofort, Supabase im Hintergrund.
 import { sanitizeCategory } from "@/constants/categories";
+import { supabase } from "@/lib/supabase";
 import * as habitService from "@/services/habitService";
 import { storage } from "@/services/storage";
 import { Habit, HabitKind, HabitSchedule } from "@/types/habit";
 import { PlannerCategory } from "@/types/planner";
 import { getTodayTimestamp } from "@/utils/dateUtils";
+import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 
+// ─── Supabase Sync ────────────────────────────────────────────────────────────
+// Schreibt im Hintergrund — wirft keinen Fehler in die UI
+async function syncHabitsToSupabase(habits: Habit[]) {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const rows = habits.map((h) => ({
+      id: h.id,
+      user_id: user.id,
+      title: h.title,
+      kind: h.kind,
+      category: h.category ?? null,
+      unit: h.unit ?? null,
+      daily_target: h.dailyTarget ?? null,
+      schedule: h.schedule ?? null,
+      completed_dates: h.completedDates,
+      completed_amounts: h.completedAmounts ?? {},
+    }));
+
+    await supabase.from("habits").upsert(rows, { onConflict: "id" });
+  } catch {
+    // Offline oder nicht eingeloggt — kein Problem, lokal ist gespeichert
+  }
+}
+
+// ─── Store ────────────────────────────────────────────────────────────────────
 type HabitState = {
   habits: Habit[];
-
-  // Actions
   addHabit: (
     title: string,
     kind: HabitKind,
@@ -24,135 +55,141 @@ type HabitState = {
     updates: Partial<Omit<Habit, "id" | "createdAt" | "completedDates">>
   ) => void;
   deleteHabit: (habitId: string) => void;
-
   toggleCheckIn: (habitId: string) => void;
   increaseAmount: (habitId: string, increment: number) => void;
   setAmountForToday: (habitId: string, value: number) => void;
-
   loadHabits: () => Promise<void>;
 };
+
+function save(habits: Habit[]) {
+  storage.habits.save(habits);
+  syncHabitsToSupabase(habits);
+}
 
 export const useHabitStore = create<HabitState>((set, get) => ({
   habits: [],
 
   addHabit: (title, kind, category, unit, dailyTarget, schedule) => {
     const newHabit: Habit = {
-      id: Date.now().toString(),
+      id: Crypto.randomUUID(),
       title,
       kind,
       unit,
       dailyTarget,
+      category,
+      schedule,
       createdAt: Date.now(),
       completedDates: [],
       completedAmounts: {},
-      category,
-      schedule, // ← NEU
     };
     const updated = [...get().habits, newHabit];
     set({ habits: updated });
-    storage.habits.save(updated);
+    save(updated);
   },
 
   updateHabit: (habitId, updates) => {
-    const updated = get().habits.map((habit) =>
-      habit.id === habitId ? { ...habit, ...updates } : habit
+    const updated = get().habits.map((h) =>
+      h.id === habitId ? { ...h, ...updates } : h
     );
-
     set({ habits: updated });
-    storage.habits.save(updated);
+    save(updated);
   },
 
   deleteHabit: (habitId) => {
     const updated = get().habits.filter((h) => h.id !== habitId);
     set({ habits: updated });
-    storage.habits.save(updated);
+    save(updated);
+
+    // Aus Supabase löschen
+    supabase.auth
+      .getUser()
+      .then(({ data: { user } }) => {
+        if (user)
+          supabase
+            .from("habits")
+            .delete()
+            .eq("id", habitId)
+            .eq("user_id", user.id);
+      })
+      .catch(() => {});
   },
 
   toggleCheckIn: (habitId) => {
     const timestamp = getTodayTimestamp();
-
     const updated = get().habits.map((habit) => {
       if (habit.id !== habitId) return habit;
-
-      // Business Logic ist jetzt im Service!
-      if (habit.kind === "boolean") {
+      if (habit.kind === "boolean")
         return habitService.toggleBooleanHabit(habit, timestamp);
-      }
-
-      // Count Habits: +1
       return habitService.incrementCountHabit(habit, 1, timestamp);
     });
-
     set({ habits: updated });
-    storage.habits.save(updated);
+    save(updated);
   },
 
   increaseAmount: (habitId, increment) => {
     const timestamp = getTodayTimestamp();
-
     const updated = get().habits.map((habit) => {
-      if (habit.id !== habitId) return habit; // ✅ BUG FIXED!
+      if (habit.id !== habitId) return habit;
       return habitService.incrementCountHabit(habit, increment, timestamp);
     });
-
     set({ habits: updated });
-    storage.habits.save(updated);
+    save(updated);
   },
 
   setAmountForToday: (habitId, value) => {
     const timestamp = getTodayTimestamp();
-
     const updated = get().habits.map((habit) => {
       if (habit.id !== habitId) return habit;
       return habitService.setCountAmount(habit, value, timestamp);
     });
-
     set({ habits: updated });
-    storage.habits.save(updated);
+    save(updated);
   },
 
   loadHabits: async () => {
-    const habits = await storage.habits.load();
-    if (!habits) return;
+    // 1. Erst lokal laden (sofort, kein Netz nötig)
+    const local = await storage.habits.load();
 
-    // 🔧 MIGRATION: Konvertiere alte Daten zu neuem Format
-    const normalized = habits.map((h) => {
-      let completedAmounts = h.completedAmounts ?? {};
+    // 2. Aus Supabase laden falls eingeloggt
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from("habits")
+          .select("*")
+          .eq("user_id", user.id);
 
-      // Konvertiere String-Keys zu Number-Keys
-      if (completedAmounts && Object.keys(completedAmounts).length > 0) {
-        const firstKey = Object.keys(completedAmounts)[0];
-
-        // Prüfe ob Keys strings sind (altes Format)
-        if (typeof firstKey === "string") {
-          const converted: Record<number, number> = {};
-
-          Object.entries(completedAmounts as Record<string, unknown>).forEach(
-            ([key, value]) => {
-              const numKey = Number(key);
-              const numValue = Number(value);
-
-              if (!isNaN(numKey) && !isNaN(numValue)) {
-                converted[numKey] = numValue;
-              }
-            }
-          );
-
-          completedAmounts = converted;
+        if (data && data.length > 0) {
+          const fromCloud: Habit[] = data.map((r) => ({
+            id: r.id,
+            title: r.title,
+            kind: r.kind ?? "boolean",
+            category: sanitizeCategory(r.category),
+            unit: r.unit ?? undefined,
+            dailyTarget: r.daily_target ?? undefined,
+            schedule: r.schedule ?? undefined,
+            completedDates: r.completed_dates ?? [],
+            completedAmounts: r.completed_amounts ?? {},
+            createdAt: new Date(r.created_at).getTime(),
+          }));
+          set({ habits: fromCloud });
+          storage.habits.save(fromCloud);
+          return;
         }
       }
+    } catch {}
 
-      return {
+    // 3. Fallback: lokale Daten
+    if (local) {
+      const normalized = local.map((h) => ({
         ...h,
         kind: h.kind ?? "boolean",
-        completedAmounts,
+        completedAmounts: h.completedAmounts ?? {},
         category: sanitizeCategory(h.category),
-      };
-    });
-
-    set({ habits: normalized });
-
-    // Speichere migrierte Daten zurück
-    storage.habits.save(normalized);
+      }));
+      set({ habits: normalized });
+    }
   },
 }));

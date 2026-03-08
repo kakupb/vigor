@@ -199,7 +199,7 @@ export const NoteBlockEditor = forwardRef<NoteBlockEditorRef, Props>(
         if (!canAskAgain) {
           Alert.alert(
             "Zugriff verweigert",
-            "Bitte erlaube den Zugriff unter Einstellungen > HabitTracker.",
+            "Bitte erlaube den Zugriff unter Einstellungen > Vigor.",
             [
               { text: "Abbrechen", style: "cancel" },
               { text: "Einstellungen", onPress: () => Linking.openSettings() },

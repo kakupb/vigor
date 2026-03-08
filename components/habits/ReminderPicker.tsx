@@ -75,7 +75,7 @@ export function ReminderPicker({ habitId, habitTitle, weekdays }: Props) {
         if (enabling) {
           Alert.alert(
             "Benachrichtigungen deaktiviert",
-            "Bitte aktiviere Benachrichtigungen für HabitTracker in den Einstellungen, um Erinnerungen zu erhalten.",
+            "Bitte aktiviere Benachrichtigungen für Vigor in den Einstellungen, um Erinnerungen zu erhalten.",
             [
               { text: "Abbrechen", style: "cancel" },
               {

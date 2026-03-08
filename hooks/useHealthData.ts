@@ -17,6 +17,7 @@ const useStatisticsForQuantity = _hk?.useStatisticsForQuantity;
 const useMostRecentWorkout = _hk?.useMostRecentWorkout;
 const AuthorizationRequestStatus = _hk?.AuthorizationRequestStatus;
 
+// ─── Quantity type identifiers ────────────────────────────────────────────────
 export const STEP_COUNT = "HKQuantityTypeIdentifierStepCount" as const;
 export const HEART_RATE = "HKQuantityTypeIdentifierHeartRate" as const;
 export const ACTIVE_ENERGY =
@@ -25,25 +26,54 @@ export const DISTANCE_WALKING =
   "HKQuantityTypeIdentifierDistanceWalkingRunning" as const;
 export const BODY_MASS = "HKQuantityTypeIdentifierBodyMass" as const;
 export const SLEEP_ANALYSIS = "HKCategoryTypeIdentifierSleepAnalysis" as const;
+export const WORKOUT_TYPE = "HKWorkoutTypeIdentifier" as const;
+
+// ─── Sleep sensor types (Apple Watch) ─────────────────────────────────────────
+// ⚠️  iOS silently returns [] for any type NOT listed in READ_PERMISSIONS.
+export const HRV_SDNN =
+  "HKQuantityTypeIdentifierHeartRateVariabilitySDNN" as const;
+export const RESPIRATORY_RATE =
+  "HKQuantityTypeIdentifierRespiratoryRate" as const;
+export const OXYGEN_SATURATION =
+  "HKQuantityTypeIdentifierOxygenSaturation" as const;
+export const RESTING_HEART_RATE =
+  "HKQuantityTypeIdentifierRestingHeartRate" as const;
+export const WRIST_TEMPERATURE =
+  "HKQuantityTypeIdentifierAppleSleepingWristTemperature" as const;
 
 const SLEEP_ASLEEP_UNSPECIFIED = 0;
 const SLEEP_ASLEEP_CORE = 3;
 const SLEEP_ASLEEP_DEEP = 4;
 const SLEEP_ASLEEP_REM = 5;
-export const WORKOUT_TYPE = "HKWorkoutTypeIdentifier" as const;
 
+// ─── Permissions ──────────────────────────────────────────────────────────────
 export const READ_PERMISSIONS = {
   toRead: [
+    // Daily metrics
     STEP_COUNT,
     HEART_RATE,
     ACTIVE_ENERGY,
     DISTANCE_WALKING,
     BODY_MASS,
+    WORKOUT_TYPE,
+    // Sleep
     SLEEP_ANALYSIS,
-    WORKOUT_TYPE, // ← NEU
+    // Sleep sensor data from Apple Watch
+    HRV_SDNN,
+    RESPIRATORY_RATE,
+    OXYGEN_SATURATION,
+    RESTING_HEART_RATE,
+    WRIST_TEMPERATURE,
+    // Workout sensor data
+    "HKQuantityTypeIdentifierRunningSpeed" as const,
+    "HKQuantityTypeIdentifierCyclingSpeed" as const,
+    "HKQuantityTypeIdentifierCyclingCadence" as const,
+    "HKQuantityTypeIdentifierCyclingPower" as const,
+    "HKQuantityTypeIdentifierRunningPower" as const,
   ],
 } as const;
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 export type WorkoutData = {
   activityType: string;
   durationMin: number;
@@ -68,40 +98,44 @@ export type HealthAuth = {
   requestAuth: () => void;
 };
 
+// ─── Workout helpers ──────────────────────────────────────────────────────────
 function workoutLabel(typeNum: number): string {
   const map: Record<number, string> = {
     37: "Laufen",
+    16: "Laufen outdoor",
     13: "Radfahren",
-    14: "Rad indoor", // ← NEU
-    16: "Laufen outdoor", // ← NEU
-    46: "Schwimmen", // ← war 20, falsch!
+    14: "Rad indoor",
+    46: "Schwimmen",
+    82: "Schwimmen Bahn",
     52: "Gehen",
-    20: "Krafttraining", // ← war Schwimmen, falsch!
+    20: "Krafttraining",
     63: "Krafttraining",
     48: "Yoga",
-    82: "Schwimmen Bahn", // ← NEU
+    57: "HIIT",
     3000: "Sport",
   };
-  return map[typeNum] ?? `Training (${typeNum})`; // ← zeigt unbekannte Typen
+  return map[typeNum] ?? `Training (${typeNum})`;
 }
 
 function workoutEmoji(typeNum: number): string {
   const map: Record<number, string> = {
     37: "🏃",
+    16: "🏃",
     13: "🚴",
-    14: "🚴", // ← NEU indoor cycling
-    16: "🏃", // ← NEU outdoor running
-    46: "🏊", // ← war bei 20, falsch!
+    14: "🚴",
+    46: "🏊",
+    82: "🏊",
     52: "🚶",
-    20: "🏋️", // ← Krafttraining
+    20: "🏋️",
     63: "🏋️",
     48: "🧘",
-    82: "🏊", // ← NEU
+    57: "⚡",
     3000: "⚽",
   };
   return map[typeNum] ?? "🏅";
 }
 
+// ─── useHealthAuth ────────────────────────────────────────────────────────────
 export function useHealthAuth(): HealthAuth {
   if (Platform.OS !== "ios" || !useHealthkitAuthorization) {
     return { isAvailable: false, isAuthorized: false, requestAuth: () => {} };
@@ -115,6 +149,7 @@ export function useHealthAuth(): HealthAuth {
   };
 }
 
+// ─── useSleepHours (for stats tab summary) ────────────────────────────────────
 function useSleepHours(): number {
   if (!useMostRecentCategorySample) return 0;
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -128,16 +163,15 @@ function useSleepHours(): number {
     v === SLEEP_ASLEEP_REM;
   if (!isAsleep) return 0;
   const ms = lastSleep.endDate.getTime() - lastSleep.startDate.getTime();
-  return Math.round((ms / (1000 * 60 * 60)) * 10) / 10;
+  return Math.round((ms / (1_000 * 60 * 60)) * 10) / 10;
 }
 
+// ─── useHealthValues ──────────────────────────────────────────────────────────
 export function useHealthValues(): HealthValues {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const now = new Date();
 
-  // Fehler werden von den Hooks intern als unhandled rejections geworfen.
-  // Wir fangen sie global für HealthKit Code=5 (Authorization not determined) ab.
   const stepsStats = useStatisticsForQuantity?.(
     STEP_COUNT,
     ["cumulativeSum"],
@@ -201,11 +235,12 @@ export function useHealthValues(): HealthValues {
   };
 }
 
+// ─── useWorkoutHistory ────────────────────────────────────────────────────────
 export type WorkoutHistoryData = WorkoutData & {
   id: string;
   startDate: Date;
   endDate: Date;
-  typeNum: number; // ← NEU
+  typeNum: number;
 };
 
 export function useWorkoutHistory(limit = 50): {
@@ -219,62 +254,46 @@ export function useWorkoutHistory(limit = 50): {
   const { isAuthorized } = useHealthAuth();
 
   useEffect(() => {
-    if (Platform.OS !== "ios" || !_hk) return;
-    if (!isAuthorized) return;
-
+    if (Platform.OS !== "ios" || !_hk || !isAuthorized) return;
     setIsLoading(true);
 
-    // ✅ Richtige API für @kingstinct/react-native-healthkit
     _hk
       .queryWorkoutSamples({
-        startDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 365),
+        startDate: new Date(Date.now() - 1_000 * 60 * 60 * 24 * 365),
         endDate: new Date(),
         limit,
       })
       .then((samples: any[]) => {
-        if (!samples || samples.length === 0) {
+        if (!samples?.length) {
           setWorkouts([]);
           return;
         }
-
         const mapped: WorkoutHistoryData[] = samples.map((s: any) => {
           const typeNum =
             typeof s.workoutActivityType === "number"
               ? s.workoutActivityType
-              : parseInt(s.workoutActivityType ?? "3000");
-
-          const start = new Date(s.startDate);
-          const end = new Date(s.endDate);
-          const dur = (end.getTime() - start.getTime()) / 60_000;
-
+              : parseInt(s.workoutActivityType ?? "0", 10);
+          const dur =
+            (new Date(s.endDate).getTime() - new Date(s.startDate).getTime()) /
+            60_000;
           return {
-            id: s.uuid ?? String(start.getTime()),
-            typeNum, // ← NEU
-            activityType: String(typeNum), // Label kommt aus Modal-Map
+            id: s.uuid ?? String(Math.random()),
+            startDate: new Date(s.startDate),
+            endDate: new Date(s.endDate),
+            typeNum,
+            activityType: workoutEmoji(typeNum) + " " + workoutLabel(typeNum),
             durationMin: Math.round(dur),
-            calories: Math.round(
-              s.totalEnergyBurned?.quantity ?? s.totalEnergyBurnedQuantity ?? 0
-            ),
-            distanceKm:
-              Math.round(
-                ((s.totalDistance?.quantity ?? s.totalDistanceQuantity ?? 0) /
-                  1000) *
-                  10
-              ) / 10,
-            date: start,
-            startDate: start,
-            endDate: end,
+            calories: Math.round(s.totalEnergyBurned?.quantity ?? 0),
+            distanceKm: Math.round((s.totalDistance?.quantity ?? 0) * 10) / 10,
+            date: new Date(s.startDate),
           };
         });
-
+        mapped.sort((a, b) => b.startDate.getTime() - a.startDate.getTime());
         setWorkouts(mapped);
       })
-      .catch((err: any) => {
-        console.log("Workout query error:", err);
-        setWorkouts([]);
-      })
+      .catch(() => setWorkouts([]))
       .finally(() => setIsLoading(false));
-  }, [limit, tick, isAuthorized]);
+  }, [isAuthorized, tick, limit]);
 
   return { workouts, isLoading, reload: () => setTick((t) => t + 1) };
 }

@@ -32,6 +32,13 @@ const TABS: {
     icon: "bar-chart-outline",
     iconActive: "bar-chart",
   },
+  // ← NEU: Health-Tab
+  {
+    name: "health",
+    label: "Health",
+    icon: "heart-outline",
+    iconActive: "heart",
+  },
 ];
 
 export default function TabsLayout() {
@@ -75,6 +82,10 @@ function CustomTabBar({ state, descriptors, navigation, insets }: any) {
             }
           };
 
+          // Health-Tab bekommt eine spezielle rote Farbe wenn aktiv
+          const activeColor = tab.name === "health" ? "#ef4444" : "#3b8995";
+          const activeBg = tab.name === "health" ? "#fef2f2" : "#f0fbfc";
+
           return (
             <HapticTab
               key={route.key}
@@ -83,13 +94,26 @@ function CustomTabBar({ state, descriptors, navigation, insets }: any) {
               accessibilityRole="button"
               accessibilityState={isFocused ? { selected: true } : {}}
             >
-              <View style={[tb.tabInner, isFocused && tb.tabInnerActive]}>
+              <View
+                style={[
+                  tb.tabInner,
+                  isFocused && {
+                    ...tb.tabInnerActive,
+                    backgroundColor: activeBg,
+                  },
+                ]}
+              >
                 <Ionicons
                   name={isFocused ? tab.iconActive : tab.icon}
                   size={22}
-                  color={isFocused ? "#3b8995" : "#94a3b8"}
+                  color={isFocused ? activeColor : "#94a3b8"}
                 />
-                <Text style={[tb.label, isFocused && tb.labelActive]}>
+                <Text
+                  style={[
+                    tb.label,
+                    isFocused && { ...tb.labelActive, color: activeColor },
+                  ]}
+                >
                   {tab.label}
                 </Text>
               </View>
@@ -118,7 +142,7 @@ const tb = StyleSheet.create({
   },
   bar: {
     flexDirection: "row",
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
   },
   tab: {
     flex: 1,
@@ -128,15 +152,15 @@ const tb = StyleSheet.create({
     alignItems: "center",
     gap: 3,
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     borderRadius: 12,
-    minWidth: 56,
+    minWidth: 48,
   },
   tabInnerActive: {
     backgroundColor: "#f0fbfc",
   },
   label: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "500",
     color: "#94a3b8",
     letterSpacing: 0.2,

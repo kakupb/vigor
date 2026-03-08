@@ -1,7 +1,9 @@
 // store/healthMetricsStore.ts
+// Nutzer-Konfiguration für Health-Metriken — in Supabase gespeichert.
+// HealthKit-Rohdaten bleiben IMMER lokal auf dem Gerät (Apple-Richtlinie).
+import { syncLoadSingle, syncUpsertSingle } from "@/lib/sync";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 
 export type MetricId =
   | "steps"
@@ -22,7 +24,6 @@ export type MetricConfig = {
   goalLabel: string;
 };
 
-// Alle verfügbaren Metriken mit Metadaten
 export const ALL_METRICS: MetricConfig[] = [
   {
     id: "steps",
@@ -86,38 +87,84 @@ export const ALL_METRICS: MetricConfig[] = [
   },
 ];
 
+const LOCAL_KEY = "health-metrics-config-v2";
+
 type HealthMetricsStore = {
   enabledMetrics: MetricId[];
   goals: Partial<Record<MetricId, number>>;
   toggleMetric: (id: MetricId) => void;
   setGoal: (id: MetricId, value: number) => void;
   isEnabled: (id: MetricId) => boolean;
+  load: () => Promise<void>;
 };
 
-export const useHealthMetricsStore = create<HealthMetricsStore>()(
-  persist(
-    (set, get) => ({
-      // Default: Schritte, Kalorien, Distanz eingeschaltet
-      enabledMetrics: ["steps", "calories", "distance"],
-      goals: {},
+async function persist(
+  enabledMetrics: MetricId[],
+  goals: Partial<Record<MetricId, number>>
+) {
+  const data = { enabled_metrics: enabledMetrics, goals };
+  // Lokal
+  await AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+  // Cloud
+  syncUpsertSingle("health_metrics_config", data);
+}
 
-      toggleMetric: (id) => {
-        const current = get().enabledMetrics;
-        const next = current.includes(id)
-          ? current.filter((m) => m !== id)
-          : [...current, id];
-        set({ enabledMetrics: next });
-      },
+export const useHealthMetricsStore = create<HealthMetricsStore>((set, get) => ({
+  enabledMetrics: ["steps", "calories", "distance"],
+  goals: {},
 
-      setGoal: (id, value) => {
-        set({ goals: { ...get().goals, [id]: value } });
-      },
+  toggleMetric: (id) => {
+    const current = get().enabledMetrics;
+    const next = current.includes(id)
+      ? current.filter((m) => m !== id)
+      : [...current, id];
+    set({ enabledMetrics: next });
+    persist(next, get().goals);
+  },
 
-      isEnabled: (id) => get().enabledMetrics.includes(id),
-    }),
-    {
-      name: "health-metrics-config",
-      storage: createJSONStorage(() => AsyncStorage),
+  setGoal: (id, value) => {
+    const goals = { ...get().goals, [id]: value };
+    set({ goals });
+    persist(get().enabledMetrics, goals);
+  },
+
+  isEnabled: (id) => get().enabledMetrics.includes(id),
+
+  load: async () => {
+    // 1. Cloud
+    const cloud = await syncLoadSingle("health_metrics_config", (r) => ({
+      enabledMetrics: r.enabled_metrics,
+      goals: r.goals,
+    }));
+
+    if (cloud) {
+      set({
+        enabledMetrics: cloud.enabledMetrics ?? [
+          "steps",
+          "calories",
+          "distance",
+        ],
+        goals: cloud.goals ?? {},
+      });
+      return;
     }
-  )
-);
+
+    // 2. Lokal
+    try {
+      const raw = await AsyncStorage.getItem(LOCAL_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        set({
+          enabledMetrics: parsed.enabled_metrics ?? [
+            "steps",
+            "calories",
+            "distance",
+          ],
+          goals: parsed.goals ?? {},
+        });
+        // Zu Cloud migrieren
+        syncUpsertSingle("health_metrics_config", parsed);
+      }
+    } catch {}
+  },
+}));

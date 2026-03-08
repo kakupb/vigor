@@ -1,25 +1,24 @@
 {
   "expo": {
-    "name": "habittracker",
-    "slug": "habittracker",
+    "name": "Vigor",
+    "slug": "vigor",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "habittracker",
+    "scheme": "vigor",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.habittracker",
+      "bundleIdentifier": "com.yakubadar.vigor",
       "entitlements": {
         "com.apple.developer.healthkit": true,
         "com.apple.developer.healthkit.access": []
       },
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "HabitTracker verwendet deine Fotobibliothek, um Bilder zu Notizen hinzuzufügen.",
-        "NSPhotoLibraryAddUsageDescription": "HabitTracker speichert Bilder aus der App in deiner Fotobibliothek.",
-        "NSCameraUsageDescription": "HabitTracker verwendet die Kamera, um Fotos direkt in Notizen einzufügen.",
-        "NSMicrophoneUsageDescription": "Das Mikrofon wird für Videoaufnahmen benötigt, die in Notizen eingebettet werden.",
-        "NSUserTrackingUsageDescription": "HabitTracker verfolgt dich nicht. Diese Beschreibung ist aus technischen Gründen erforderlich."
+        "NSPhotoLibraryUsageDescription": "Vigor verwendet deine Fotobibliothek, um Bilder zu Notizen hinzuzufügen.",
+        "NSPhotoLibraryAddUsageDescription": "Vigor speichert Bilder aus der App in deiner Fotobibliothek.",
+        "NSCameraUsageDescription": "Vigor verwendet die Kamera, um Fotos direkt in Notizen einzufügen.",
+        "NSMicrophoneUsageDescription": "Das Mikrofon wird für Videoaufnahmen benötigt, die in Notizen eingebettet werden."
       }
     },
     "android": {
@@ -31,7 +30,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.habittracker",
+      "package": "com.yakubadar.vigor",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES",
@@ -60,8 +59,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "HabitTracker verwendet deine Fotobibliothek, um Bilder zu Notizen hinzuzufügen.",
-          "cameraPermission": "HabitTracker verwendet die Kamera, um Fotos direkt in Notizen einzufügen.",
+          "photosPermission": "Vigor verwendet deine Fotobibliothek, um Bilder zu Notizen hinzuzufügen.",
+          "cameraPermission": "Vigor verwendet die Kamera, um Fotos direkt in Notizen einzufügen.",
           "microphonePermission": false
         }
       ],
@@ -76,11 +75,12 @@
       [
         "@kingstinct/react-native-healthkit",
         {
-          "NSHealthShareUsageDescription": "HabitTracker liest Workout- und Aktivitätsdaten aus Apple Health, damit du Trainings in deinen Planner importieren und Gesundheitsmetriken in der Analyse sehen kannst.",
-          "NSHealthUpdateUsageDescription": "HabitTracker schreibt keine Daten in Apple Health."
+          "NSHealthShareUsageDescription": "Vigor liest Workout- und Aktivitätsdaten aus Apple Health, damit du Trainings in deinen Planner importieren und Gesundheitsmetriken in der Analyse sehen kannst.",
+          "NSHealthUpdateUsageDescription": "Vigor schreibt keine Daten in Apple Health."
         }
       ],
-      "expo-video"
+      "expo-video",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

@@ -92,7 +92,7 @@ export function NoteImageSection({ images, onImagesChange }: Props) {
     if (!canAskAgain) {
       Alert.alert(
         "Zugriff verweigert",
-        `Bitte erlaube den ${label}-Zugriff unter Einstellungen > HabitTracker.`,
+        `Bitte erlaube den ${label}-Zugriff unter Einstellungen > Vigor.`,
         [
           { text: "Abbrechen", style: "cancel" },
           { text: "Einstellungen", onPress: () => Linking.openSettings() },

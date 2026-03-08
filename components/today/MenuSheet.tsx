@@ -1,5 +1,7 @@
 // components/today/MenuSheet.tsx
+// Hauptmenü — Logout + Konto dauerhaft löschen (DSGVO + App Store Pflicht)
 import { WorkoutHistoryModal } from "@/components/stats/WorkoutHistoryModal";
+import { useAuthStore } from "@/store/authStore";
 import { useHabitStore } from "@/store/habitStore";
 import { useNoteStore } from "@/store/noteStore";
 import { usePlannerStore } from "@/store/plannerStore";
@@ -22,240 +24,249 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// ─── FAQ Daten ────────────────────────────────────────────────────────────────
+// ─── FAQ ─────────────────────────────────────────────────────────────────────
 const FAQ = [
   {
     q: "Wie erstelle ich ein neues Habit?",
-    a: 'Tippe im Heute-Screen auf "+ Habit" oben rechts. Gib einen Titel ein, wähle eine Kategorie und lege fest ob es ein tägliches Check-in oder ein Mengenziel ist.',
+    a: 'Tippe im Heute-Screen auf "+ Habit". Gib Titel, Kategorie und Intervall ein.',
   },
   {
     q: "Was ist der Streak?",
-    a: "Der Streak zeigt wie viele Tage in Folge du ein Habit abgehakt hast. Wenn du einen Tag aussetzt, startet der Streak von vorne.",
+    a: "Der Streak zeigt wie viele Tage in Folge du ein Habit abgehakt hast.",
   },
   {
-    q: "Wie importiere ich Trainings aus Apple Health?",
-    a: 'Tippe oben rechts auf das Menü (···) und dann auf "Trainings importieren". Dort siehst du alle Workouts aus der Health App und kannst sie in den Planner übernehmen.',
+    q: "Wie importiere ich Trainings?",
+    a: 'Tippe im Menü auf "Trainings importieren". Alle Workouts aus Apple Health werden angezeigt.',
   },
   {
-    q: "Wie verknüpfe ich eine Notiz mit einem Habit?",
-    a: "Öffne eine Notiz zum Bearbeiten. Tippe in der Werkzeugleiste auf das Link-Symbol. Dort kannst du Habits und Plannereinträge auswählen und verknüpfen.",
+    q: "Werden Gesundheitsdaten hochgeladen?",
+    a: "Nein. Apple-Health-Daten (Schlaf, Herzrate, Schritte etc.) verlassen niemals dein Gerät. Das ist eine Apple-Richtlinie.",
   },
   {
-    q: "Kann ich meine Daten sichern?",
-    a: 'Ja – tippe im Menü auf "Daten exportieren". Du erhältst eine JSON-Datei mit all deinen Habits, Plannereinträgen und Notizen, die du speichern oder teilen kannst.',
+    q: "Kann ich meine Daten exportieren?",
+    a: 'Ja – tippe auf "Daten exportieren". Du erhältst eine JSON-Datei mit Habits, Planner und Notizen.',
   },
   {
-    q: "Werden meine Daten in die Cloud gespeichert?",
-    a: "Nein. Alle Daten bleiben ausschließlich auf deinem Gerät. Es gibt keine Server-Verbindung, kein Konto, keine Weitergabe an Dritte.",
+    q: "Was passiert wenn ich mich abmelde?",
+    a: "Deine Daten bleiben sicher in der Cloud. Du kannst dich jederzeit wieder anmelden.",
+  },
+  {
+    q: "Wie lösche ich mein Konto?",
+    a: 'Tippe im Menü auf "Konto löschen". Alle Daten werden unwiderruflich gelöscht.',
   },
 ];
 
-// ─── Datenschutz-Inhalt ───────────────────────────────────────────────────────
-const PRIVACY_SECTIONS = [
+// ─── Datenschutz ─────────────────────────────────────────────────────────────
+const PRIVACY = [
   {
-    title: "Lokale Datenspeicherung",
-    text: "Alle von dir eingegebenen Daten – Habits, Planner-Einträge, Notizen und dein Name – werden ausschließlich lokal im Speicher deines Geräts gesichert. Es findet keine Übertragung an Dritte oder externe Server von HabitTracker statt.",
-  },
-  {
-    title: "iCloud Backup",
-    text: "iOS sichert App-Daten automatisch in deinem iCloud-Konto, sofern du iCloud Backup aktiviert hast. Diese Sicherung erfolgt durch Apple und unterliegt den Apple-Datenschutzrichtlinien. Du kannst dies unter Einstellungen > [dein Name] > iCloud > Apps, die iCloud nutzen verwalten.",
+    title: "Cloud-Speicherung",
+    text: "Habits, Planner, Notizen und Profil werden verschlüsselt in Supabase (Frankfurt, EU) gespeichert. Übertragung via HTTPS/TLS, Speicherung via AES-256. Nur du hast Zugriff (Row Level Security).",
   },
   {
     title: "Apple Health",
-    text: "Die App kann mit Apple HealthKit verbunden werden, um Workout-Daten zu lesen. Diese Daten werden nur auf Anforderung abgerufen und nicht ohne dein Zutun importiert. HabitTracker schreibt keine Daten in Apple Health.",
+    text: "HealthKit-Daten werden nur lokal auf deinem Gerät gelesen und niemals übertragen. Wir halten uns strikt an Apples HealthKit-Richtlinien.",
   },
   {
-    title: "Keine Tracker oder Analysen",
-    text: "Es werden keine Analyse-Tools, Werbenetzwerke oder Tracking-Dienste eingesetzt. Du wirst nicht verfolgt und es werden keine Nutzungsdaten gesammelt.",
-  },
-  {
-    title: "Kein Konto erforderlich",
-    text: "Die App funktioniert vollständig ohne Registrierung oder Anmeldung. Dein Name wird lokal gespeichert und dient nur der personalisierten Begrüßung.",
+    title: "Kein Tracking, keine Werbung",
+    text: "Wir verwenden keine Analytics-Tools, kein Tracking und keine Werbebibliotheken. Deine Daten werden nicht an Dritte weitergegeben.",
   },
   {
     title: "Datenlöschung",
-    text: "Alle App-Daten werden vollständig gelöscht, wenn du die App deinstallierst. Vorhandene iCloud-Backups kannst du über die iOS-Einstellungen löschen.",
+    text: 'Du kannst dein Konto und alle Daten jederzeit dauerhaft löschen. Tippe auf „Konto löschen" im Menü. Die Löschung ist unwiderruflich.',
   },
 ];
 
-// ─── Unterkomponenten ─────────────────────────────────────────────────────────
+type Sub = null | "faq" | "privacy";
 
-function FaqItem({ item }: { item: (typeof FAQ)[0] }) {
+function FaqItem({ item }: { item: { q: string; a: string } }) {
   const [open, setOpen] = useState(false);
   return (
-    <Pressable
-      onPress={() => setOpen((v) => !v)}
-      style={({ pressed }) => [
-        fq.item,
-        pressed && { backgroundColor: "#f8f9fb" },
-      ]}
-    >
+    <Pressable onPress={() => setOpen((v) => !v)} style={fq.wrap}>
       <View style={fq.row}>
-        <Text style={fq.question}>{item.q}</Text>
+        <Text style={fq.q}>{item.q}</Text>
         <Ionicons
           name={open ? "chevron-up" : "chevron-down"}
-          size={16}
+          size={14}
           color="#94a3b8"
         />
       </View>
-      {open && <Text style={fq.answer}>{item.a}</Text>}
+      {open && <Text style={fq.a}>{item.a}</Text>}
     </Pressable>
   );
 }
 
 const fq = StyleSheet.create({
-  item: {
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+  wrap: {
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#f1f5f9",
   },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
+    alignItems: "flex-start",
+    gap: 8,
   },
-  question: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#0f172a",
-    lineHeight: 20,
-  },
-  answer: { fontSize: 13, color: "#64748b", lineHeight: 20, marginTop: 8 },
+  q: { flex: 1, fontSize: 14, fontWeight: "600", color: "#0f172a" },
+  a: { fontSize: 13, color: "#64748b", marginTop: 6, lineHeight: 19 },
 });
 
-// ─── Export-Funktion ──────────────────────────────────────────────────────────
-async function exportData(
-  habits: any[],
-  entries: any[],
-  notes: any[],
-  setExporting: (v: boolean) => void
-) {
-  setExporting(true);
-  try {
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      version: "1.0",
-      data: { habits, plannerEntries: entries, notes },
-    };
-    const json = JSON.stringify(payload, null, 2);
-    await Share.share({
-      title: "HabitTracker Export",
-      message: json,
-    });
-  } catch (e: any) {
-    if (e?.message !== "The user did not share") {
-      Alert.alert("Export fehlgeschlagen", "Bitte versuche es erneut.");
-    }
-  } finally {
-    setExporting(false);
-  }
+// ─── Hauptkomponente ──────────────────────────────────────────────────────────
+interface Props {
+  visible: boolean;
+  onClose: () => void;
 }
 
-// ─── Props ────────────────────────────────────────────────────────────────────
-type Props = { visible: boolean; onClose: () => void };
-type SubScreen = null | "faq" | "privacy";
-
-// ─── Hauptkomponente ──────────────────────────────────────────────────────────
 export function MenuSheet({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const { name, setName } = useUserStore();
+  const { signOut, deleteAccount, user } = useAuthStore();
   const habits = useHabitStore((s) => s.habits);
   const entries = usePlannerStore((s) => s.entries);
   const notes = useNoteStore((s) => s.notes);
 
-  const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(name ?? "");
+  const [editingName, setEditingName] = useState(false);
   const [workoutVisible, setWorkoutVisible] = useState(false);
-  const [subScreen, setSubScreen] = useState<SubScreen>(null);
+  const [sub, setSub] = useState<Sub>(null);
   const [exporting, setExporting] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function saveName() {
-    const trimmed = nameInput.trim();
-    if (!trimmed) return;
-    await setName(trimmed);
+    const t = nameInput.trim();
+    if (!t) return;
+    await setName(t);
     setEditingName(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await Share.share({
+        message: JSON.stringify({ habits, entries, notes }, null, 2),
+        title: "Vigor Daten",
+      });
+    } catch {}
+    setExporting(false);
+  }
+
+  function handleLogout() {
+    Alert.alert(
+      "Abmelden",
+      "Möchtest du dich abmelden? Deine Daten bleiben sicher in der Cloud.",
+      [
+        { text: "Abbrechen", style: "cancel" },
+        {
+          text: "Abmelden",
+          style: "destructive",
+          onPress: async () => {
+            setLoggingOut(true);
+            onClose();
+            await signOut();
+            setLoggingOut(false);
+          },
+        },
+      ]
+    );
+  }
+
+  // ── Konto löschen — zweistufige Bestätigung (App-Store + DSGVO Pflicht) ────
+  function handleDeleteAccount() {
+    Alert.alert(
+      "Konto löschen",
+      "Möchtest du dein Konto und ALLE deine Daten dauerhaft löschen?\n\nDiese Aktion ist unwiderruflich.",
+      [
+        { text: "Abbrechen", style: "cancel" },
+        {
+          text: "Konto löschen",
+          style: "destructive",
+          onPress: () => {
+            // Zweite Bestätigung
+            Alert.alert(
+              "Bist du sicher?",
+              "Alle Habits, Notizen, Planner-Einträge und dein Profil werden dauerhaft gelöscht.",
+              [
+                { text: "Abbrechen", style: "cancel" },
+                {
+                  text: "Ja, alles löschen",
+                  style: "destructive",
+                  onPress: async () => {
+                    setDeleting(true);
+                    onClose();
+                    const { error } = await deleteAccount();
+                    setDeleting(false);
+                    if (error) {
+                      Alert.alert(
+                        "Fehler",
+                        "Konto konnte nicht gelöscht werden: " + error
+                      );
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  }
+
   function close() {
-    setSubScreen(null);
+    setSub(null);
     onClose();
   }
 
-  // ── Sub-screen: FAQ ──
-  if (subScreen === "faq") {
+  // ── Sub: FAQ ──────────────────────────────────────────────────────────────
+  if (sub === "faq") {
     return (
       <Modal
         visible={visible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setSubScreen(null)}
+        onRequestClose={() => setSub(null)}
       >
         <View style={[s.root, { paddingTop: insets.top }]}>
-          <View style={s.header}>
-            <Pressable
-              onPress={() => setSubScreen(null)}
-              style={s.backBtn}
-              hitSlop={8}
-            >
-              <Ionicons name="chevron-back" size={20} color="#3b8995" />
-              <Text style={s.backText}>Zurück</Text>
-            </Pressable>
-            <Text style={s.headerTitle}>Hilfe & FAQ</Text>
-            <Pressable onPress={close} style={s.closeBtn} hitSlop={8}>
-              <Ionicons name="close" size={16} color="#64748b" />
-            </Pressable>
-          </View>
+          <SubHeader
+            title="Hilfe & FAQ"
+            onBack={() => setSub(null)}
+            onClose={close}
+          />
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+            contentContainerStyle={{
+              padding: 20,
+              paddingBottom: insets.bottom + 32,
+            }}
           >
-            <View style={s.sectionCard}>
+            <View style={s.card}>
               {FAQ.map((item, i) => (
-                <View
-                  key={i}
-                  style={i < FAQ.length - 1 ? {} : { borderBottomWidth: 0 }}
-                >
-                  <FaqItem item={item} />
-                </View>
+                <FaqItem key={i} item={item} />
               ))}
             </View>
-            <Text style={s.subHint}>
-              Weitere Fragen? Schreib uns über "Feedback senden".
-            </Text>
+            <Text style={s.hint}>Weitere Fragen? feedback@vigor-app.de</Text>
           </ScrollView>
         </View>
       </Modal>
     );
   }
 
-  // ── Sub-screen: Datenschutz ──
-  if (subScreen === "privacy") {
+  // ── Sub: Datenschutz ──────────────────────────────────────────────────────
+  if (sub === "privacy") {
     return (
       <Modal
         visible={visible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setSubScreen(null)}
+        onRequestClose={() => setSub(null)}
       >
         <View style={[s.root, { paddingTop: insets.top }]}>
-          <View style={s.header}>
-            <Pressable
-              onPress={() => setSubScreen(null)}
-              style={s.backBtn}
-              hitSlop={8}
-            >
-              <Ionicons name="chevron-back" size={20} color="#3b8995" />
-              <Text style={s.backText}>Zurück</Text>
-            </Pressable>
-            <Text style={s.headerTitle}>Datenschutz</Text>
-            <Pressable onPress={close} style={s.closeBtn} hitSlop={8}>
-              <Ionicons name="close" size={16} color="#64748b" />
-            </Pressable>
-          </View>
+          <SubHeader
+            title="Datenschutz"
+            onBack={() => setSub(null)}
+            onClose={close}
+          />
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[
@@ -263,28 +274,30 @@ export function MenuSheet({ visible, onClose }: Props) {
               { paddingBottom: insets.bottom + 32 },
             ]}
           >
-            <View style={[s.sectionCard, { gap: 0, padding: 16 }]}>
-              {PRIVACY_SECTIONS.map((sec, i) => (
+            <View style={[s.card, { padding: 16, gap: 0 }]}>
+              {PRIVACY.map((sec, i) => (
                 <View
                   key={i}
-                  style={[
-                    pr.section,
-                    i < PRIVACY_SECTIONS.length - 1 && pr.sectionBorder,
-                  ]}
+                  style={[pr.sec, i < PRIVACY.length - 1 && pr.border]}
                 >
                   <Text style={pr.title}>{sec.title}</Text>
                   <Text style={pr.text}>{sec.text}</Text>
                 </View>
               ))}
             </View>
-            <Text style={s.subHint}>Stand: März 2026</Text>
+            <Text style={s.hint}>
+              Stand: März 2026 · Alle Daten in EU (Frankfurt)
+            </Text>
           </ScrollView>
         </View>
       </Modal>
     );
   }
 
-  // ── Hauptmenü ──
+  // ── Hauptmenü ─────────────────────────────────────────────────────────────
+  const displayName = name && name !== "_onboarded" ? name : null;
+  const initials = displayName ? displayName.charAt(0).toUpperCase() : "?";
+
   return (
     <>
       <Modal
@@ -294,6 +307,7 @@ export function MenuSheet({ visible, onClose }: Props) {
         onRequestClose={close}
       >
         <View style={[s.root, { paddingTop: insets.top }]}>
+          {/* Header */}
           <View style={s.header}>
             <Text style={s.headerTitle}>Menü</Text>
             <Pressable onPress={close} style={s.closeBtn} hitSlop={8}>
@@ -311,130 +325,97 @@ export function MenuSheet({ visible, onClose }: Props) {
             {/* ── Profil ── */}
             <View style={s.profileCard}>
               <View style={s.avatar}>
-                <Text style={s.avatarText}>
-                  {(name ?? "?")[0].toUpperCase()}
-                </Text>
+                <Text style={s.avatarTx}>{initials}</Text>
               </View>
-              <View style={s.profileInfo}>
-                {editingName ? (
-                  <View style={s.nameEditRow}>
-                    <TextInput
-                      style={s.nameInput}
-                      value={nameInput}
-                      onChangeText={setNameInput}
-                      autoFocus
-                      returnKeyType="done"
-                      onSubmitEditing={saveName}
-                      maxLength={30}
-                    />
-                    <Pressable onPress={saveName} style={s.saveNameBtn}>
-                      <Ionicons name="checkmark" size={16} color="white" />
-                    </Pressable>
-                  </View>
-                ) : (
-                  <Pressable
-                    onPress={() => {
-                      setNameInput(name ?? "");
-                      setEditingName(true);
-                    }}
-                    style={s.nameRow}
-                  >
-                    <Text style={s.profileName}>{name}</Text>
-                    <Ionicons name="pencil-outline" size={13} color="#94a3b8" />
+              {editingName ? (
+                <View style={s.nameEditRow}>
+                  <TextInput
+                    style={s.nameInput}
+                    value={nameInput}
+                    onChangeText={setNameInput}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={saveName}
+                    maxLength={30}
+                  />
+                  <Pressable onPress={saveName} style={s.nameSaveBtn}>
+                    <Ionicons name="checkmark" size={16} color="white" />
                   </Pressable>
-                )}
-                <Text style={s.profileSub}>Tippe zum Bearbeiten</Text>
-              </View>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => {
+                    setNameInput(displayName ?? "");
+                    setEditingName(true);
+                  }}
+                  style={s.nameRow}
+                >
+                  <Text style={s.nameTx}>{displayName ?? "Name setzen"}</Text>
+                  <Ionicons name="pencil-outline" size={14} color="#94a3b8" />
+                </Pressable>
+              )}
+              {user?.email ? <Text style={s.emailTx}>{user.email}</Text> : null}
             </View>
 
-            {/* ── Daten ── */}
-            <Text style={s.sectionLabel}>DATEN</Text>
-            <View style={s.sectionCard}>
-              <MenuItem
-                icon="fitness-outline"
-                color="#3b8995"
-                bg="#f0fbfc"
+            {/* ── Aktionen ── */}
+            <View style={s.card}>
+              <MI
+                icon="barbell-outline"
                 label="Trainings importieren"
-                sublabel="Aus Apple Health"
                 onPress={() => {
-                  close();
-                  setTimeout(() => setWorkoutVisible(true), 350);
+                  onClose();
+                  setTimeout(() => setWorkoutVisible(true), 300);
                 }}
               />
-              <MenuItem
-                icon="cloud-download-outline"
-                color="#8b5cf6"
-                bg="#f5f3ff"
+              <MI
+                icon="download-outline"
                 label="Daten exportieren"
-                sublabel={`${habits.length} Habits · ${entries.length} Einträge · ${notes.length} Notizen`}
-                last
+                onPress={handleExport}
                 loading={exporting}
-                onPress={() => exportData(habits, entries, notes, setExporting)}
               />
-            </View>
-
-            {/* ── Support ── */}
-            <Text style={s.sectionLabel}>SUPPORT</Text>
-            <View style={s.sectionCard}>
-              <MenuItem
-                icon="help-circle-outline"
-                color="#f59e0b"
-                bg="#fffbeb"
-                label="Hilfe & FAQ"
-                sublabel="Häufige Fragen zur App"
-                onPress={() => setSubScreen("faq")}
-              />
-              <MenuItem
-                icon="chatbubble-ellipses-outline"
-                color="#10b981"
-                bg="#f0fdf4"
+              <MI
+                icon="mail-outline"
                 label="Feedback senden"
-                sublabel="feedback@habittracker.app"
-                onPress={() => {
-                  Linking.openURL(
-                    "mailto:feedback@habittracker.app?subject=Feedback%20HabitTracker"
-                  );
-                }}
-              />
-              <MenuItem
-                icon="star-outline"
-                color="#f59e0b"
-                bg="#fffbeb"
-                label="App bewerten"
-                sublabel="Im App Store"
-                last
-                onPress={() => {
-                  // Ersetze APP_STORE_ID mit deiner echten Apple ID
-                  Linking.openURL(
-                    "itms-apps://itunes.apple.com/app/idAPP_STORE_ID?action=write-review"
-                  ).catch(() => Linking.openURL("https://apps.apple.com"));
-                }}
+                onPress={() => Linking.openURL("mailto:feedback@vigor-app.de")}
               />
             </View>
 
-            {/* ── Rechtliches ── */}
-            <Text style={s.sectionLabel}>RECHTLICHES</Text>
-            <View style={s.sectionCard}>
-              <MenuItem
+            {/* ── Info ── */}
+            <View style={s.card}>
+              <MI
+                icon="help-circle-outline"
+                label="Hilfe & FAQ"
+                onPress={() => setSub("faq")}
+                chevron
+              />
+              <MI
                 icon="shield-checkmark-outline"
-                color="#64748b"
-                bg="#f8f9fb"
                 label="Datenschutz"
-                sublabel="Alle Daten bleiben lokal auf deinem Gerät"
-                onPress={() => setSubScreen("privacy")}
-              />
-              <MenuItem
-                icon="document-text-outline"
-                color="#64748b"
-                bg="#f8f9fb"
-                label="Impressum"
-                sublabel="Angaben gemäß § 5 TMG"
-                last
-                onPress={() => Alert.alert("Impressum", "Folgt in Kürze.")}
+                onPress={() => setSub("privacy")}
+                chevron
               />
             </View>
 
-            <Text style={s.version}>HabitTracker · Version 1.0.0</Text>
+            {/* ── Konto ── */}
+            <View style={s.card}>
+              <MI
+                icon="log-out-outline"
+                label="Abmelden"
+                onPress={handleLogout}
+                loading={loggingOut}
+              />
+              <MI
+                icon="trash-outline"
+                label="Konto löschen"
+                onPress={handleDeleteAccount}
+                loading={deleting}
+                color="#dc2626"
+              />
+            </View>
+
+            <Text style={s.version}>
+              Vigor v1.0.0 · EU-Cloud · AES-256 verschlüsselt
+            </Text>
           </ScrollView>
         </View>
       </Modal>
@@ -447,48 +428,62 @@ export function MenuSheet({ visible, onClose }: Props) {
   );
 }
 
-// ─── MenuItem Hilfskomponente ─────────────────────────────────────────────────
-function MenuItem({
+// ─── Sub-Screen Header ────────────────────────────────────────────────────────
+function SubHeader({
+  title,
+  onBack,
+  onClose,
+}: {
+  title: string;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <View style={s.header}>
+      <Pressable onPress={onBack} style={sb.back} hitSlop={8}>
+        <Ionicons name="chevron-back" size={20} color="#3b8995" />
+        <Text style={sb.backTx}>Zurück</Text>
+      </Pressable>
+      <Text style={s.headerTitle}>{title}</Text>
+      <Pressable onPress={onClose} style={s.closeBtn} hitSlop={8}>
+        <Ionicons name="close" size={16} color="#64748b" />
+      </Pressable>
+    </View>
+  );
+}
+
+// ─── Menu Item ────────────────────────────────────────────────────────────────
+function MI({
   icon,
-  color,
-  bg,
   label,
-  sublabel,
-  last,
-  loading,
   onPress,
+  chevron,
+  loading,
+  color,
 }: {
   icon: React.ComponentProps<typeof Ionicons>["name"];
-  color: string;
-  bg: string;
   label: string;
-  sublabel?: string;
-  last?: boolean;
-  loading?: boolean;
   onPress: () => void;
+  chevron?: boolean;
+  loading?: boolean;
+  color?: string;
 }) {
+  const c = color ?? "#0f172a";
+  const accent = color ?? "#3b8995";
   return (
     <Pressable
       onPress={onPress}
-      disabled={loading}
-      style={({ pressed }) => [
-        s.item,
-        !last && s.itemBorder,
-        pressed && s.itemPressed,
-      ]}
+      style={({ pressed }) => [mi.row, pressed && { opacity: 0.6 }]}
     >
-      <View style={[s.itemIcon, { backgroundColor: bg }]}>
-        <Ionicons name={icon} size={18} color={color} />
+      <View style={[mi.iconWrap, { backgroundColor: accent + "18" }]}>
+        {loading ? (
+          <ActivityIndicator size="small" color={accent} />
+        ) : (
+          <Ionicons name={icon} size={17} color={accent} />
+        )}
       </View>
-      <View style={s.itemText}>
-        <Text style={s.itemLabel}>{label}</Text>
-        {sublabel && <Text style={s.itemSublabel}>{sublabel}</Text>}
-      </View>
-      {loading ? (
-        <ActivityIndicator size="small" color="#94a3b8" />
-      ) : (
-        <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
-      )}
+      <Text style={[mi.label, { color: c }]}>{label}</Text>
+      {chevron && <Ionicons name="chevron-forward" size={14} color="#cbd5e1" />}
     </Pressable>
   );
 }
@@ -502,136 +497,120 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: "white",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#e2e8f0",
   },
   headerTitle: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
-  backBtn: { flexDirection: "row", alignItems: "center", gap: 2, width: 80 },
-  backText: { fontSize: 16, color: "#3b8995", fontWeight: "500" },
   closeBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#f1f5f9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  content: { padding: 16, gap: 4 },
-
-  // Profil
-  profileCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    backgroundColor: "white",
+    width: 32,
+    height: 32,
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  content: { padding: 16, gap: 12 },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
     shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+  },
+  hint: { fontSize: 12, color: "#94a3b8", textAlign: "center" },
+  version: {
+    fontSize: 11,
+    color: "#cbd5e1",
+    textAlign: "center",
+    marginTop: 4,
+  },
+
+  profileCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 20,
+    alignItems: "center",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
   },
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "#3b8995",
-    justifyContent: "center",
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#f0fbfc",
     alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#a5e8ef",
   },
-  avatarText: { fontSize: 20, fontWeight: "700", color: "white" },
-  profileInfo: { flex: 1, gap: 2 },
+  avatarTx: { fontSize: 26, fontWeight: "700", color: "#3b8995" },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  profileName: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
-  profileSub: { fontSize: 12, color: "#94a3b8" },
-  nameEditRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  nameTx: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
+  emailTx: { fontSize: 12, color: "#94a3b8" },
+  nameEditRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+  },
   nameInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "600",
     color: "#0f172a",
     backgroundColor: "#f8f9fb",
     borderRadius: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: "#3b8995",
   },
-  saveNameBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#3b8995",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  // Sektion
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#94a3b8",
-    letterSpacing: 0.8,
-    marginLeft: 4,
-    marginBottom: 6,
-    marginTop: 12,
-  },
-  sectionCard: {
-    backgroundColor: "white",
-    borderRadius: 14,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  item: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    gap: 12,
-    backgroundColor: "white",
-  },
-  itemBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#f1f5f9",
-  },
-  itemPressed: { backgroundColor: "#f8f9fb" },
-  itemIcon: {
+  nameSaveBtn: {
     width: 36,
     height: 36,
-    borderRadius: 10,
-    justifyContent: "center",
+    borderRadius: 18,
+    backgroundColor: "#3b8995",
     alignItems: "center",
-  },
-  itemText: { flex: 1, gap: 1 },
-  itemLabel: { fontSize: 15, fontWeight: "600", color: "#0f172a" },
-  itemSublabel: { fontSize: 12, color: "#94a3b8" },
-
-  // Sub-screen
-  subHint: {
-    fontSize: 12,
-    color: "#cbd5e1",
-    textAlign: "center",
-    marginTop: 16,
-  },
-  version: {
-    fontSize: 12,
-    color: "#cbd5e1",
-    textAlign: "center",
-    marginTop: 24,
+    justifyContent: "center",
   },
 });
 
-const pr = StyleSheet.create({
-  section: { paddingVertical: 14, gap: 6 },
-  sectionBorder: {
+const mi = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#f1f5f9",
   },
-  title: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
-  text: { fontSize: 13, color: "#64748b", lineHeight: 20 },
+  iconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  label: { flex: 1, fontSize: 15, fontWeight: "500" },
+});
+
+const pr = StyleSheet.create({
+  sec: { paddingVertical: 14 },
+  border: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#f1f5f9",
+  },
+  title: { fontSize: 14, fontWeight: "700", color: "#0f172a", marginBottom: 4 },
+  text: { fontSize: 13, color: "#64748b", lineHeight: 19 },
+});
+
+const sb = StyleSheet.create({
+  back: { flexDirection: "row", alignItems: "center", gap: 2 },
+  backTx: { fontSize: 15, color: "#3b8995", fontWeight: "600" },
 });
