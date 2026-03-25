@@ -9,7 +9,7 @@ import {
 } from "@/store/focusStore";
 import { PlannerEntry } from "@/types/planner";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
+import { Audio } from "expo-av";
 import * as Crypto from "expo-crypto";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -61,17 +61,68 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
   const setSound = useFocusStore((s) => s.setSound);
   const setPomodoroConfig = useFocusStore((s) => s.setPomodoroConfig);
 
-  // ── Bell-Sound ─────────────────────────────────────────────────────────────
-  // Datei hinzufügen: assets/sounds/bell.mp3
-  const bellPlayer = useAudioPlayer(require("@/assets/sounds/bell.mp3"));
-  function playBell() {
+  // ── Audio (expo-av) ────────────────────────────────────────────────────────
+  const bellSoundRef = useRef<Audio.Sound | null>(null);
+  const ambientSoundRef = useRef<Audio.Sound | null>(null);
+
+  // Bell-Sound laden
+  useEffect(() => {
+    Audio.Sound.createAsync(require("@/assets/sounds/bell.mp3"), {
+      shouldPlay: false,
+    })
+      .then(({ sound }) => {
+        bellSoundRef.current = sound;
+      })
+      .catch(() => {});
+
+    return () => {
+      bellSoundRef.current?.unloadAsync();
+      ambientSoundRef.current?.unloadAsync();
+    };
+  }, []);
+
+  // Audio-Modus setzen
+  useEffect(() => {
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true }).catch(() => {});
+  }, []);
+
+  async function playBell() {
     try {
-      bellPlayer.seekTo(0);
-      bellPlayer.play();
-    } catch (e) {
-      /* ignore */
-    }
+      if (bellSoundRef.current) {
+        await bellSoundRef.current.setPositionAsync(0);
+        await bellSoundRef.current.playAsync();
+      }
+    } catch {}
   }
+
+  // Ambient Sound
+  useEffect(() => {
+    async function updateAmbient() {
+      try {
+        // Vorherigen Sound stoppen
+        if (ambientSoundRef.current) {
+          await ambientSoundRef.current.stopAsync();
+          await ambientSoundRef.current.unloadAsync();
+          ambientSoundRef.current = null;
+        }
+
+        if (!visible || !soundEnabled || selectedSound === "none") return;
+
+        const file = SOUND_FILES[selectedSound];
+        if (!file) return;
+
+        const { sound } = await Audio.Sound.createAsync(file, {
+          shouldPlay: true,
+          isLooping: true,
+          volume: 0.6,
+        });
+        ambientSoundRef.current = sound;
+      } catch (e) {
+        console.warn("Ambient sound error:", e);
+      }
+    }
+    updateAmbient();
+  }, [soundEnabled, selectedSound, visible]);
 
   const {
     state: pomodoroState,
@@ -80,8 +131,7 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
     reset,
   } = usePomodoro(pomodoroConfig, playBell);
 
-  // ── Refs für Touch-Handler (kein stale closure) ────────────────────────────
-  // ALLE Werte, die in den Touch-Handlern benötigt werden, via Refs bereitstellen
+  // ── Refs ──────────────────────────────────────────────────────────────────
   const pressStartTime = useRef<number | null>(null);
   const tickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseRef = useRef(0);
@@ -94,9 +144,7 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
   const onExitRef = useRef(onExit);
   const resetRef = useRef(reset);
   const focusStartTimeRef = useRef(focusStartTime);
-  const audioPlayerRef = useRef<ReturnType<typeof useAudioPlayer> | null>(null);
 
-  // Refs immer synchron halten
   useEffect(() => {
     activeSheetRef.current = activeSheet;
   }, [activeSheet]);
@@ -119,7 +167,7 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
     resetRef.current = reset;
   }, [reset]);
 
-  // ── Animated values (stabil) ──────────────────────────────────────────────
+  // ── Animated values ───────────────────────────────────────────────────────
   const progressAnim = useRef(new Animated.Value(0)).current;
   const videoScale = useRef(new Animated.Value(1)).current;
   const extraDim = useRef(new Animated.Value(0)).current;
@@ -127,7 +175,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
   const blurOpacity = useRef(new Animated.Value(0)).current;
   const uiOpacity = useRef(new Animated.Value(1)).current;
 
-  // ── Animationsfunktionen – über Refs aufgerufen, deshalb stabile Refs nötig
   const enterPhase1 = useCallback(() => {
     Animated.parallel([
       Animated.timing(videoScale, {
@@ -277,7 +324,7 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
       shakeLoopRef.current = null;
     }
     shakeX.setValue(0);
-    audioPlayerRef.current?.pause();
+    ambientSoundRef.current?.stopAsync();
     setIsExiting(true);
 
     const entry = currentEntryRef.current;
@@ -306,7 +353,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
     }, 1000);
   }, []);
 
-  // ── Stabile Refs zu den useCallback-Funktionen ────────────────────────────
   const enterPhase1Ref = useRef(enterPhase1);
   const enterPhase2Ref = useRef(enterPhase2);
   const enterPhase3Ref = useRef(enterPhase3);
@@ -328,21 +374,16 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
     doExitCompleteRef.current = doExitComplete;
   }, [doExitComplete]);
 
-  // ── Touch-Handler: EINMALIG erstellt (leere Deps) ─────────────────────────
-  // Alle Werte kommen aus Refs → kein stale closure möglich
   const handleTouchStart = useCallback(() => {
     if (activeSheetRef.current !== "none") return;
     if (isExitingRef.current) return;
-
     pressStartTime.current = Date.now();
     phaseRef.current = 0;
-
     tickIntervalRef.current = setInterval(() => {
       if (!pressStartTime.current) return;
       const elapsed = Date.now() - pressStartTime.current;
       const pct = Math.min((elapsed / 3000) * 100, 100);
       progressAnim.setValue(pct);
-
       if (elapsed >= 0 && phaseRef.current === 0) {
         phaseRef.current = 1;
         enterPhase1Ref.current();
@@ -359,7 +400,7 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
         doExitCompleteRef.current();
       }
     }, 32);
-  }, []); // ← leere Deps: nie neu erstellt, kein stale closure
+  }, []);
 
   const handleTouchEnd = useCallback(() => {
     pressStartTime.current = null;
@@ -368,39 +409,7 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
       tickIntervalRef.current = null;
     }
     doResetAllRef.current();
-  }, []); // ← leere Deps
-
-  // ── Audio ─────────────────────────────────────────────────────────────────
-  const audioPlayer = useAudioPlayer(null);
-  audioPlayerRef.current = audioPlayer;
-
-  useEffect(() => {
-    setAudioModeAsync({ playsInSilentMode: true });
   }, []);
-
-  useEffect(() => {
-    if (!visible || !soundEnabled || selectedSound === "none") {
-      audioPlayer.pause();
-      return;
-    }
-    const file = SOUND_FILES[selectedSound];
-    if (!file) {
-      audioPlayer.pause();
-      return;
-    }
-    try {
-      audioPlayer.replace(file);
-      audioPlayer.loop = true;
-      audioPlayer.volume = 0.6;
-      audioPlayer.play();
-    } catch (e) {
-      console.warn("Sound error:", e);
-    }
-  }, [soundEnabled, selectedSound, visible]);
-
-  useEffect(() => {
-    if (!visible) audioPlayer.pause();
-  }, [visible]);
 
   // ── Sound-Navigation ──────────────────────────────────────────────────────
   function getSoundIndex() {
@@ -421,7 +430,7 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
     if (selectedSound === "none")
       setSound(PLAYABLE_SOUNDS[0].id as AmbientSound);
     else if (soundEnabled) {
-      audioPlayer.pause();
+      ambientSoundRef.current?.stopAsync();
       useFocusStore.getState().toggleSound();
     } else useFocusStore.getState().toggleSound();
   }
@@ -437,7 +446,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
   );
   const slothMood = getSlothMood(currentEntry?.category);
 
-  // ── Doppeltippen ──────────────────────────────────────────────────────────
   function openEdit(target: NonNullable<EditTarget>) {
     setEditTarget(target);
     setEditValue(String(target.value));
@@ -475,7 +483,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
       >
-        {/* Hintergrund */}
         <Animated.View
           style={[
             s.videoBg,
@@ -499,7 +506,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
           <View style={[s.blurSmear, { marginTop: 160, opacity: 0.3 }]} />
         </Animated.View>
 
-        {/* Haupt-UI */}
         <Animated.View
           style={[
             s.main,
@@ -510,7 +516,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
             },
           ]}
         >
-          {/* TOP */}
           <View style={s.topRow}>
             {stats.currentStreak > 0 && !isExiting ? (
               <View style={s.streakBadge}>
@@ -534,7 +539,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
             </Pressable>
           </View>
 
-          {/* MITTE */}
           <View style={s.middle}>
             {!isExiting && (
               <>
@@ -594,7 +598,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
             )}
           </View>
 
-          {/* UNTEN */}
           <View style={s.bottom}>
             {currentEntry && !isExiting && (
               <View style={s.entryCard}>
@@ -607,8 +610,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
                 )}
               </View>
             )}
-
-            {/* Sound-Controls */}
             {!isExiting && (
               <View style={s.soundBlock}>
                 <View style={s.soundBtns}>
@@ -647,8 +648,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
                 </Text>
               </View>
             )}
-
-            {/* ── Exit-Zone: nur visueller Fortschrittsbalken ── */}
             {!isExiting && (
               <View style={s.exitZone}>
                 <View style={s.progressTrack}>
@@ -670,7 +669,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
           </View>
         </Animated.View>
 
-        {/* Settings-Sheet */}
         {activeSheet === "settings" && (
           <View style={[s.sheet, { paddingBottom: insets.bottom + 20 }]}>
             <View style={s.sheetHeader}>
@@ -684,112 +682,79 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
               </Pressable>
             </View>
             <View style={s.grid}>
-              <StepperCard
-                iconLib="ion"
-                iconName="timer-outline"
-                label="Fokus"
-                value={pomodoroConfig.workMinutes}
-                unit="Min"
-                min={1}
-                max={90}
-                step={5}
-                onDoubleTap={() =>
-                  openEdit({
-                    key: "workMinutes",
-                    label: "Fokus-Dauer",
-                    min: 1,
-                    max: 90,
-                    value: pomodoroConfig.workMinutes,
-                  })
-                }
-                onChange={(v) =>
-                  setPomodoroConfig({
-                    ...useFocusStore.getState().pomodoroConfig,
-                    workMinutes: v,
-                  })
-                }
-              />
-              <StepperCard
-                iconLib="ion"
-                iconName="cafe-outline"
-                label="Kurze Pause"
-                value={pomodoroConfig.breakMinutes}
-                unit="Min"
-                min={1}
-                max={30}
-                step={1}
-                onDoubleTap={() =>
-                  openEdit({
-                    key: "breakMinutes",
-                    label: "Kurze Pause",
-                    min: 1,
-                    max: 30,
-                    value: pomodoroConfig.breakMinutes,
-                  })
-                }
-                onChange={(v) =>
-                  setPomodoroConfig({
-                    ...useFocusStore.getState().pomodoroConfig,
-                    breakMinutes: v,
-                  })
-                }
-              />
-              <StepperCard
-                iconLib="ion"
-                iconName="moon-outline"
-                label="Lange Pause"
-                value={pomodoroConfig.longBreakMinutes}
-                unit="Min"
-                min={1}
-                max={60}
-                step={5}
-                onDoubleTap={() =>
-                  openEdit({
-                    key: "longBreakMinutes",
-                    label: "Lange Pause",
-                    min: 1,
-                    max: 60,
-                    value: pomodoroConfig.longBreakMinutes,
-                  })
-                }
-                onChange={(v) =>
-                  setPomodoroConfig({
-                    ...useFocusStore.getState().pomodoroConfig,
-                    longBreakMinutes: v,
-                  })
-                }
-              />
-              <StepperCard
-                iconLib="mci"
-                iconName="repeat"
-                label="Zykluslänge"
-                sublabel="Einheiten bis lange Pause"
-                value={pomodoroConfig.longBreakAfter}
-                unit="Einh."
-                min={2}
-                max={8}
-                step={1}
-                onDoubleTap={() =>
-                  openEdit({
-                    key: "longBreakAfter",
-                    label: "Zykluslänge",
-                    min: 2,
-                    max: 8,
-                    value: pomodoroConfig.longBreakAfter,
-                  })
-                }
-                onChange={(v) =>
-                  setPomodoroConfig({
-                    ...useFocusStore.getState().pomodoroConfig,
-                    longBreakAfter: v,
-                  })
-                }
-              />
+              {[
+                {
+                  key: "workMinutes" as const,
+                  icon: "timer-outline",
+                  lib: "ion" as const,
+                  label: "Fokus",
+                  min: 1,
+                  max: 90,
+                  step: 5,
+                  value: pomodoroConfig.workMinutes,
+                },
+                {
+                  key: "breakMinutes" as const,
+                  icon: "cafe-outline",
+                  lib: "ion" as const,
+                  label: "Kurze Pause",
+                  min: 1,
+                  max: 30,
+                  step: 1,
+                  value: pomodoroConfig.breakMinutes,
+                },
+                {
+                  key: "longBreakMinutes" as const,
+                  icon: "moon-outline",
+                  lib: "ion" as const,
+                  label: "Lange Pause",
+                  min: 1,
+                  max: 60,
+                  step: 5,
+                  value: pomodoroConfig.longBreakMinutes,
+                },
+                {
+                  key: "longBreakAfter" as const,
+                  icon: "repeat",
+                  lib: "mci" as const,
+                  label: "Zykluslänge",
+                  min: 2,
+                  max: 8,
+                  step: 1,
+                  value: pomodoroConfig.longBreakAfter,
+                },
+              ].map((item) => (
+                <StepperCard
+                  key={item.key}
+                  iconLib={item.lib}
+                  iconName={item.icon}
+                  label={item.label}
+                  value={item.value}
+                  unit={item.key === "longBreakAfter" ? "Einh." : "Min"}
+                  min={item.min}
+                  max={item.max}
+                  step={item.step}
+                  onDoubleTap={() =>
+                    openEdit({
+                      key: item.key,
+                      label: item.label,
+                      min: item.min,
+                      max: item.max,
+                      value: item.value,
+                    })
+                  }
+                  onChange={(v) =>
+                    setPomodoroConfig({
+                      ...useFocusStore.getState().pomodoroConfig,
+                      [item.key]: v,
+                    })
+                  }
+                />
+              ))}
             </View>
           </View>
         )}
 
-        {/* ── Edit-Modal: KeyboardAvoidingView schiebt das Sheet über die Tastatur ── */}
         {editTarget !== null && (
           <View style={s.editOverlay}>
             <Pressable style={s.editBackdrop} onPress={commitEdit} />
@@ -809,7 +774,7 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
                   style={s.editInput}
                   value={editValue}
                   onChangeText={setEditValue}
-                  keyboardType="number-pad" // ← nur Zahlen, keine Buchstaben
+                  keyboardType="number-pad"
                   autoFocus
                   selectTextOnFocus
                   returnKeyType="done"
@@ -933,9 +898,7 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     borderRadius: 20,
   },
-
   main: { flex: 1, justifyContent: "space-between", paddingHorizontal: 26 },
-
   topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -962,7 +925,6 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   iconBtnActive: { backgroundColor: "#3b8995" },
-
   middle: { flex: 1, justifyContent: "center", alignItems: "center" },
   moodBox: { alignItems: "center", marginBottom: 32 },
   activityText: {
@@ -1015,7 +977,6 @@ const s = StyleSheet.create({
   exitBox: { alignItems: "center", gap: 12 },
   exitMsg: { fontSize: 18, fontWeight: "600", color: "rgba(255,255,255,0.9)" },
   exitCongrats: { fontSize: 15, color: "rgba(255,255,255,0.65)" },
-
   bottom: { alignItems: "center", gap: 14 },
   entryCard: {
     backgroundColor: "rgba(255,255,255,0.09)",
@@ -1043,7 +1004,6 @@ const s = StyleSheet.create({
     marginBottom: 2,
   },
   entryTime: { fontSize: 11, color: "rgba(255,255,255,0.45)" },
-
   soundBlock: { alignItems: "center", gap: 6 },
   soundBtns: { flexDirection: "row", alignItems: "center", gap: 22 },
   dimmed: { opacity: 0.22 },
@@ -1053,7 +1013,6 @@ const s = StyleSheet.create({
     letterSpacing: 0.3,
     textAlign: "center",
   },
-
   exitZone: { width: "100%", alignItems: "center", paddingVertical: 10 },
   progressTrack: {
     width: "100%",
@@ -1065,7 +1024,6 @@ const s = StyleSheet.create({
   },
   progressFill: { height: "100%", backgroundColor: "#3b8995", borderRadius: 2 },
   hint: { fontSize: 11, color: "rgba(255,255,255,0.28)", textAlign: "center" },
-
   sheet: {
     position: "absolute",
     bottom: 0,
@@ -1093,8 +1051,6 @@ const s = StyleSheet.create({
     letterSpacing: 0.8,
   },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingBottom: 4 },
-
-  // Edit-Modal
   editOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end" },
   editBackdrop: {
     ...StyleSheet.absoluteFillObject,

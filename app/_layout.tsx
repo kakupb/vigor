@@ -1,12 +1,5 @@
 // app/_layout.tsx
 // Root Layout — Auth-Guard + lädt alle Stores beim Start
-//
-// DEV_BYPASS: In __DEV__ (Expo Go / Metro) kann der Login übersprungen werden.
-// Einfach DEV_BYPASS = true setzen, dann startet die App direkt im Tab-Navigator.
-// Vor dem Release immer auf false zurücksetzen (oder CI-Check einbauen).
-//
-const DEV_BYPASS = __DEV__ && false; // ← auf false setzen für Login-Tests
-
 import { useAuthStore } from "@/store/authStore";
 import { useHealthMetricsStore } from "@/store/healthMetricsStore";
 import { useUserStore } from "@/store/userStore";
@@ -27,13 +20,6 @@ function AuthGuard() {
   const segments = useSegments() as string[];
 
   useEffect(() => {
-    // Im Dev-Bypass-Modus: immer zu Today navigieren
-    if (DEV_BYPASS) {
-      const inAuthGroup = segments[0] === "(auth)";
-      if (inAuthGroup) router.replace("/(tabs)/today");
-      return;
-    }
-
     if (!isAuthReady) return;
     const inAuthGroup = segments[0] === "(auth)";
     if (session && inAuthGroup) {
@@ -49,23 +35,20 @@ function AuthGuard() {
 // ─── Root Layout ──────────────────────────────────────────────────────────────
 export default function RootLayout() {
   const { initialize, isAuthReady } = useAuthStore();
-  const { loadUser, setName } = useUserStore();
+  const loadUser = useUserStore((s) => s.loadUser);
   const loadMetrics = useHealthMetricsStore((s) => s.load);
 
   useEffect(() => {
-    if (DEV_BYPASS) {
-      // Kein Supabase-Call, kein Netzwerk nötig.
-      // Lokale Stores (Habits, Planner, Notes) laden aus AsyncStorage.
-      setName("Dev User");
-      loadMetrics();
-      return;
-    }
-
-    Promise.all([initialize(), loadUser(), loadMetrics()]);
+    // Alles parallel laden beim App-Start
+    Promise.all([
+      initialize(), // Supabase Session + onAuthStateChange
+      loadUser(), // Nutzerprofil
+      loadMetrics(), // Health-Metriken Konfiguration
+    ]);
   }, []);
 
-  // Im Bypass-Modus sofort rendern — kein Splash nötig
-  if (!DEV_BYPASS && !isAuthReady) {
+  // Splash-Screen solange Auth nicht bereit
+  if (!isAuthReady) {
     return (
       <View
         style={{
