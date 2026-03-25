@@ -6,6 +6,7 @@ import { usePlannerStore } from "@/store/plannerStore";
 import { dateToLocalString, getTodayTimestamp } from "@/utils/dateUtils";
 import { getCompletionRate } from "@/utils/getStreak";
 import { isScheduledForToday } from "@/utils/scheduleUtils";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useEffect } from "react";
 import { Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -351,7 +352,9 @@ export default function StatsScreen() {
         {bestStreak > 0 && (
           <View style={s.streakHero}>
             <View style={s.streakHeroLeft}>
-              <Text style={s.streakHeroEmoji}>🔥</Text>
+              <Text style={s.streakHeroEmoji}>
+                <MaterialCommunityIcons name="fire" size={14} color="#F74920" />
+              </Text>
               <View>
                 <Text style={s.streakHeroLabel}>Längster aktiver Streak</Text>
                 <Text style={s.streakHeroHabit} numberOfLines={1}>
@@ -413,7 +416,14 @@ export default function StatsScreen() {
                   </View>
                   <View style={s.streakNums}>
                     <View style={s.streakNumItem}>
-                      <Text style={s.streakNumValue}>🔥 {streak ?? 0}</Text>
+                      <Text style={s.streakNumValue}>
+                        <MaterialCommunityIcons
+                          name="fire"
+                          size={14}
+                          color="#F74920"
+                        />{" "}
+                        {streak ?? 0}
+                      </Text>
                       <Text style={s.streakNumLabel}>aktuell</Text>
                     </View>
                     <View style={s.streakNumItem}>
@@ -450,8 +460,17 @@ export default function StatsScreen() {
               bg: "#f0fbfc",
             },
             {
-              label: "Längster Streak",
-              value: `${bestStreak}🔥`,
+              label: "Längste Streak",
+              value: (
+                <>
+                  <Text>{bestStreak}</Text>
+                  <MaterialCommunityIcons
+                    name="fire"
+                    size={24}
+                    color="#F74920"
+                  />
+                </>
+              ),
               color: "#f59e0b",
               bg: "#fffbeb",
             },

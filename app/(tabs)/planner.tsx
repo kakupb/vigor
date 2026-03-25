@@ -5,12 +5,14 @@ import PlannerWeekView from "@/components/planner/PlannerWeekView";
 import { dateToLocalString } from "@/utils/dateUtils";
 import { useRef, useState } from "react";
 import { Dimensions, Pressable, ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type PlannerView = "day" | "week" | "month";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 export default function PlannerScreen() {
+  const insets = useSafeAreaInsets();
   const [currentView, setCurrentView] = useState<PlannerView>("day");
   const [selectedDate, setSelectedDate] = useState<string>(
     dateToLocalString(new Date())
@@ -53,6 +55,7 @@ export default function PlannerScreen() {
           flexDirection: "row",
           padding: 20,
           paddingBottom: 12,
+          paddingTop: insets.top + 12,
           gap: 8,
           backgroundColor: "white",
         }}

@@ -198,21 +198,12 @@ export const useNoteStore = create<NoteState>((set, get) => ({
   },
 
   loadNotes: async () => {
-    // 1. Lokal laden (sofort, kein Netz nötig)
+    // ── GUARD: Nicht neu laden wenn bereits Daten im Speicher ─────────────────
+    if (get().notes.length > 0) return;
+
+    // 1. Lokal laden und SOFORT anzeigen (kein Warten auf Netz)
     const local = await storage.notes.load();
-
-    // 2. Cloud laden
-    const cloud = await syncLoad<note>("notes", fromRow);
-
-    if (cloud && cloud.length > 0) {
-      set({ notes: cloud });
-      storage.notes.save(cloud);
-      return;
-    }
-
-    // 3. Keine Cloud-Daten → lokale Daten migrieren + anzeigen
     if (local && local.length > 0) {
-      // Migration: alte Notizen ohne blocks → blocks erstellen
       const migrated = local.map((n) => {
         if (n.blocks && n.blocks.length > 0) return n;
         const blocks: NoteBlock[] = [];
@@ -247,14 +238,25 @@ export const useNoteStore = create<NoteState>((set, get) => ({
           linkedPlannerIds: n.linkedPlannerIds ?? [],
         };
       });
-
+      // ── Sofort rendern, nicht auf Cloud warten ────────────────────────────
       set({ notes: migrated });
       storage.notes.save(migrated);
+    }
 
-      // Zu Supabase hochladen (einmalig)
+    // 2. Cloud im Hintergrund syncen (blockiert die UI nicht mehr)
+    const cloud = await syncLoad<note>("notes", fromRow);
+    if (cloud && cloud.length > 0) {
+      set({ notes: cloud });
+      storage.notes.save(cloud);
+      return;
+    }
+
+    // 3. Migration zu Supabase (einmalig, im Hintergrund)
+    const current = get().notes;
+    if (current.length > 0) {
       const user = await getCurrentUser();
       if (user) {
-        const rows = await Promise.all(migrated.map(toRow));
+        const rows = await Promise.all(current.map(toRow));
         migrateLocalToSupabase("notes", rows.filter(Boolean) as object[]);
       }
     }

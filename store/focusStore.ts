@@ -1,6 +1,7 @@
 // store/focusStore.ts
 // Offline-first: Sessions lokal + Supabase.
-// Stats als Single-Row Upsert (eine Zeile pro User).
+// Neu: pomodoroConfig (einstellbare Zeiten) + selectedSound (expo-audio)
+import { DEFAULT_POMODORO_CONFIG, PomodoroConfig } from "@/hooks/usePomodoro";
 import {
   getCurrentUser,
   syncLoadSingle,
@@ -12,6 +13,38 @@ import { FocusSession, FocusStats } from "@/types/focus";
 import { dateToLocalString } from "@/utils/dateUtils";
 import { create } from "zustand";
 
+export type AmbientSound =
+  | "none"
+  | "white"
+  | "brown"
+  | "rain"
+  | "ocean"
+  | "forest";
+
+export const AMBIENT_SOUNDS: {
+  id: AmbientSound;
+  label: string;
+  icon: string;
+}[] = [
+  { id: "none", label: "Kein Sound", icon: "volume-mute-outline" },
+  { id: "white", label: "White Noise", icon: "radio-outline" },
+  { id: "brown", label: "Brown Noise", icon: "leaf-outline" },
+  { id: "rain", label: "Regen", icon: "rainy-outline" },
+  { id: "ocean", label: "Meer", icon: "water-outline" },
+  { id: "forest", label: "Wald", icon: "partly-sunny-outline" },
+];
+
+// Dateipfade — MP3s unter assets/sounds/ ablegen
+// Kostenlose Loops: freesound.org / mynoise.net (30–60 Sek. reichen, isLooping: true)
+export const SOUND_FILES: Record<AmbientSound, any> = {
+  none: null,
+  white: require("@/assets/sounds/white-noise.mp3"),
+  brown: require("@/assets/sounds/brown-noise.mp3"),
+  rain: require("@/assets/sounds/rain.mp3"),
+  ocean: require("@/assets/sounds/ocean.mp3"),
+  forest: require("@/assets/sounds/forest.mp3"),
+};
+
 const defaultStats: FocusStats = {
   totalSessions: 0,
   totalMinutes: 0,
@@ -22,7 +55,6 @@ const defaultStats: FocusStats = {
   pomodorosCompleted: 0,
 };
 
-// ─── Mapping ──────────────────────────────────────────────────────────────────
 async function sessionToRow(s: FocusSession) {
   const user = await getCurrentUser();
   if (!user) return null;
@@ -59,14 +91,18 @@ async function syncStats(stats: FocusStats) {
   });
 }
 
-// ─── Store ────────────────────────────────────────────────────────────────────
 type FocusState = {
   stats: FocusStats;
   sessions: FocusSession[];
   soundEnabled: boolean;
+  selectedSound: AmbientSound;
+  pomodoroConfig: PomodoroConfig;
+
   addSession: (session: FocusSession) => void;
   loadStats: () => Promise<void>;
   toggleSound: () => void;
+  setSound: (sound: AmbientSound) => void;
+  setPomodoroConfig: (config: PomodoroConfig) => void;
   updateStreak: () => void;
 };
 
@@ -74,11 +110,12 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   stats: defaultStats,
   sessions: [],
   soundEnabled: false,
+  selectedSound: "none",
+  pomodoroConfig: DEFAULT_POMODORO_CONFIG,
 
   addSession: (session) => {
     const newSessions = [...get().sessions, session];
     const durationMinutes = Math.floor(session.durationSeconds / 60);
-
     const updatedStats: FocusStats = {
       ...get().stats,
       totalSessions: get().stats.totalSessions + 1,
@@ -90,19 +127,13 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       pomodorosCompleted:
         get().stats.pomodorosCompleted + (session.pomodoroCount ?? 0),
     };
-
     set({ sessions: newSessions, stats: updatedStats });
-
-    // Lokal speichern
     storage.save("focus_sessions", newSessions);
     storage.save("focus_stats", updatedStats);
-
-    // Supabase: Session + Stats
     sessionToRow(session).then((row) => {
       if (row) syncUpsert("focus_sessions", row);
     });
     syncStats(updatedStats);
-
     get().updateStreak();
   },
 
@@ -114,13 +145,8 @@ export const useFocusStore = create<FocusState>((set, get) => ({
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = dateToLocalString(yesterday);
-
     const newStreak =
-      lastFocus === yesterdayStr
-        ? get().stats.currentStreak + 1
-        : lastFocus && lastFocus < yesterdayStr
-        ? 1
-        : 1;
+      lastFocus === yesterdayStr ? get().stats.currentStreak + 1 : 1;
 
     const updatedStats: FocusStats = {
       ...get().stats,
@@ -128,40 +154,51 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       bestStreak: Math.max(get().stats.bestStreak, newStreak),
       lastFocusDate: today,
     };
-
     set({ stats: updatedStats });
     storage.save("focus_stats", updatedStats);
     syncStats(updatedStats);
   },
 
   loadStats: async () => {
-    // 1. Lokal laden
     const localStats = await storage.load<FocusStats>("focus_stats");
     const localSessions = await storage.load<FocusSession[]>("focus_sessions");
     const localSound = await storage.load<boolean>("focus_sound_enabled");
-
-    // 2. Cloud laden
+    const localSelectedSound = await storage.load<AmbientSound>(
+      "focus_selected_sound"
+    );
+    const localPomodoroConfig = await storage.load<PomodoroConfig>(
+      "focus_pomodoro_config"
+    );
     const cloudStats = await syncLoadSingle<FocusStats>(
       "focus_stats",
       statsFromRow
     );
 
-    // Cloud-Daten bevorzugen (sind aktueller bei Multi-Device)
     set({
       stats: cloudStats ?? localStats ?? defaultStats,
       sessions: localSessions ?? [],
       soundEnabled: localSound ?? false,
+      selectedSound: localSelectedSound ?? "none",
+      pomodoroConfig: localPomodoroConfig ?? DEFAULT_POMODORO_CONFIG,
     });
-
-    // Lokale Stats zu Cloud migrieren falls Cloud leer
-    if (!cloudStats && localStats) {
-      syncStats(localStats);
-    }
+    if (!cloudStats && localStats) syncStats(localStats);
   },
 
   toggleSound: () => {
     const newValue = !get().soundEnabled;
     set({ soundEnabled: newValue });
     storage.save("focus_sound_enabled", newValue);
+  },
+
+  setSound: (sound: AmbientSound) => {
+    // "none" → Sound aus; alles andere → Sound an
+    set({ selectedSound: sound, soundEnabled: sound !== "none" });
+    storage.save("focus_selected_sound", sound);
+    storage.save("focus_sound_enabled", sound !== "none");
+  },
+
+  setPomodoroConfig: (config: PomodoroConfig) => {
+    set({ pomodoroConfig: config });
+    storage.save("focus_pomodoro_config", config);
   },
 }));

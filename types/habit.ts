@@ -129,6 +129,7 @@ export type HabitSchedule = {
   startDate?: string; // ISO date string "2025-03-01"
   endDate?: string; // ISO date string, optional
   repeatUnit?: RepeatUnit;
+  weekDays?: number[];
   repeatEvery?: number; // alle N Tage/Wochen/Monate/Jahre
 };
 

@@ -48,12 +48,8 @@ export default function Notes() {
   }
 
   useEffect(() => {
-    async function load() {
-      await loadNotes();
-      setIsLoading(false);
-    }
-    load();
-  }, [loadNotes]);
+    loadNotes().finally(() => setIsLoading(false));
+  }, []);
 
   const allTags = useMemo(() => getAllTags(notes), [notes]);
 

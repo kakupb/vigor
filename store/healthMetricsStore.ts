@@ -1,6 +1,4 @@
 // store/healthMetricsStore.ts
-// Nutzer-Konfiguration für Health-Metriken — in Supabase gespeichert.
-// HealthKit-Rohdaten bleiben IMMER lokal auf dem Gerät (Apple-Richtlinie).
 import { syncLoadSingle, syncUpsertSingle } from "@/lib/sync";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
@@ -13,9 +11,15 @@ export type MetricId =
   | "sleep"
   | "weight";
 
+// Neu: Icon-Typ statt emoji string
+export type MetricIcon = {
+  lib: "ion" | "mci"; // "ion" = Ionicons, "mci" = MaterialCommunityIcons
+  name: string;
+};
+
 export type MetricConfig = {
   id: MetricId;
-  emoji: string;
+  icon: MetricIcon; // ← war: emoji: string
   label: string;
   color: string;
   bg: string;
@@ -27,7 +31,7 @@ export type MetricConfig = {
 export const ALL_METRICS: MetricConfig[] = [
   {
     id: "steps",
-    emoji: "👣",
+    icon: { lib: "mci", name: "walk" },
     label: "Schritte",
     color: "#3b8995",
     bg: "#f0fbfc",
@@ -37,7 +41,7 @@ export const ALL_METRICS: MetricConfig[] = [
   },
   {
     id: "calories",
-    emoji: "🔥",
+    icon: { lib: "mci", name: "fire" },
     label: "Kalorien",
     color: "#f59e0b",
     bg: "#fffbeb",
@@ -47,7 +51,7 @@ export const ALL_METRICS: MetricConfig[] = [
   },
   {
     id: "distance",
-    emoji: "🏃",
+    icon: { lib: "mci", name: "run-fast" },
     label: "Distanz",
     color: "#10b981",
     bg: "#f0fdf4",
@@ -57,7 +61,7 @@ export const ALL_METRICS: MetricConfig[] = [
   },
   {
     id: "heartRate",
-    emoji: "❤️",
+    icon: { lib: "mci", name: "heart-pulse" },
     label: "Herzrate",
     color: "#ef4444",
     bg: "#fef2f2",
@@ -67,7 +71,7 @@ export const ALL_METRICS: MetricConfig[] = [
   },
   {
     id: "sleep",
-    emoji: "🌙",
+    icon: { lib: "ion", name: "moon" },
     label: "Schlaf",
     color: "#8b5cf6",
     bg: "#faf5ff",
@@ -77,7 +81,7 @@ export const ALL_METRICS: MetricConfig[] = [
   },
   {
     id: "weight",
-    emoji: "⚖️",
+    icon: { lib: "mci", name: "scale-bathroom" },
     label: "Gewicht",
     color: "#64748b",
     bg: "#f8fafc",
@@ -103,9 +107,7 @@ async function persist(
   goals: Partial<Record<MetricId, number>>
 ) {
   const data = { enabled_metrics: enabledMetrics, goals };
-  // Lokal
   await AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(data));
-  // Cloud
   syncUpsertSingle("health_metrics_config", data);
 }
 
@@ -131,7 +133,6 @@ export const useHealthMetricsStore = create<HealthMetricsStore>((set, get) => ({
   isEnabled: (id) => get().enabledMetrics.includes(id),
 
   load: async () => {
-    // 1. Cloud
     const cloud = await syncLoadSingle("health_metrics_config", (r) => ({
       enabledMetrics: r.enabled_metrics,
       goals: r.goals,
@@ -149,7 +150,6 @@ export const useHealthMetricsStore = create<HealthMetricsStore>((set, get) => ({
       return;
     }
 
-    // 2. Lokal
     try {
       const raw = await AsyncStorage.getItem(LOCAL_KEY);
       if (raw) {
@@ -162,7 +162,6 @@ export const useHealthMetricsStore = create<HealthMetricsStore>((set, get) => ({
           ],
           goals: parsed.goals ?? {},
         });
-        // Zu Cloud migrieren
         syncUpsertSingle("health_metrics_config", parsed);
       }
     } catch {}

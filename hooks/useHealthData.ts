@@ -2,13 +2,10 @@
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 
-// Expo Go Guard: NitroModules wirft beim Import in Expo Go
 let _hk: any = null;
 try {
   _hk = require("@kingstinct/react-native-healthkit");
-} catch {
-  // Expo Go: HealthKit nicht verfügbar
-}
+} catch {}
 
 const useHealthkitAuthorization = _hk?.useHealthkitAuthorization;
 const useMostRecentCategorySample = _hk?.useMostRecentCategorySample;
@@ -17,7 +14,6 @@ const useStatisticsForQuantity = _hk?.useStatisticsForQuantity;
 const useMostRecentWorkout = _hk?.useMostRecentWorkout;
 const AuthorizationRequestStatus = _hk?.AuthorizationRequestStatus;
 
-// ─── Quantity type identifiers ────────────────────────────────────────────────
 export const STEP_COUNT = "HKQuantityTypeIdentifierStepCount" as const;
 export const HEART_RATE = "HKQuantityTypeIdentifierHeartRate" as const;
 export const ACTIVE_ENERGY =
@@ -27,9 +23,6 @@ export const DISTANCE_WALKING =
 export const BODY_MASS = "HKQuantityTypeIdentifierBodyMass" as const;
 export const SLEEP_ANALYSIS = "HKCategoryTypeIdentifierSleepAnalysis" as const;
 export const WORKOUT_TYPE = "HKWorkoutTypeIdentifier" as const;
-
-// ─── Sleep sensor types (Apple Watch) ─────────────────────────────────────────
-// ⚠️  iOS silently returns [] for any type NOT listed in READ_PERMISSIONS.
 export const HRV_SDNN =
   "HKQuantityTypeIdentifierHeartRateVariabilitySDNN" as const;
 export const RESPIRATORY_RATE =
@@ -46,25 +39,20 @@ const SLEEP_ASLEEP_CORE = 3;
 const SLEEP_ASLEEP_DEEP = 4;
 const SLEEP_ASLEEP_REM = 5;
 
-// ─── Permissions ──────────────────────────────────────────────────────────────
 export const READ_PERMISSIONS = {
   toRead: [
-    // Daily metrics
     STEP_COUNT,
     HEART_RATE,
     ACTIVE_ENERGY,
     DISTANCE_WALKING,
     BODY_MASS,
     WORKOUT_TYPE,
-    // Sleep
     SLEEP_ANALYSIS,
-    // Sleep sensor data from Apple Watch
     HRV_SDNN,
     RESPIRATORY_RATE,
     OXYGEN_SATURATION,
     RESTING_HEART_RATE,
     WRIST_TEMPERATURE,
-    // Workout sensor data
     "HKQuantityTypeIdentifierRunningSpeed" as const,
     "HKQuantityTypeIdentifierCyclingSpeed" as const,
     "HKQuantityTypeIdentifierCyclingCadence" as const,
@@ -75,7 +63,8 @@ export const READ_PERMISSIONS = {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type WorkoutData = {
-  activityType: string;
+  activityType: string; // nur Text-Label, kein Emoji mehr
+  typeNum: number; // ← neu: wird für Icon-Lookup in UI-Komponenten genutzt
   durationMin: number;
   calories: number;
   distanceKm: number;
@@ -99,7 +88,8 @@ export type HealthAuth = {
 };
 
 // ─── Workout helpers ──────────────────────────────────────────────────────────
-function workoutLabel(typeNum: number): string {
+// workoutEmoji() entfernt — Icons kommen jetzt aus WO_MAP in den UI-Komponenten
+export function workoutLabel(typeNum: number): string {
   const map: Record<number, string> = {
     37: "Laufen",
     16: "Laufen outdoor",
@@ -117,24 +107,6 @@ function workoutLabel(typeNum: number): string {
   return map[typeNum] ?? `Training (${typeNum})`;
 }
 
-function workoutEmoji(typeNum: number): string {
-  const map: Record<number, string> = {
-    37: "🏃",
-    16: "🏃",
-    13: "🚴",
-    14: "🚴",
-    46: "🏊",
-    82: "🏊",
-    52: "🚶",
-    20: "🏋️",
-    63: "🏋️",
-    48: "🧘",
-    57: "⚡",
-    3000: "⚽",
-  };
-  return map[typeNum] ?? "🏅";
-}
-
 // ─── useHealthAuth ────────────────────────────────────────────────────────────
 export function useHealthAuth(): HealthAuth {
   if (Platform.OS !== "ios" || !useHealthkitAuthorization) {
@@ -149,7 +121,7 @@ export function useHealthAuth(): HealthAuth {
   };
 }
 
-// ─── useSleepHours (for stats tab summary) ────────────────────────────────────
+// ─── useSleepHours ────────────────────────────────────────────────────────────
 function useSleepHours(): number {
   if (!useMostRecentCategorySample) return 0;
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -207,7 +179,8 @@ export function useHealthValues(): HealthValues {
           lastWorkoutRaw.startDate.getTime()) /
         60_000;
       lastWorkout = {
-        activityType: workoutEmoji(typeNum) + " " + workoutLabel(typeNum),
+        activityType: workoutLabel(typeNum), // ← kein Emoji mehr
+        typeNum, // ← neu
         durationMin: Math.round(dur),
         calories: Math.round(
           (lastWorkoutRaw as any).totalEnergyBurned?.quantity ?? 0
@@ -281,7 +254,7 @@ export function useWorkoutHistory(limit = 50): {
             startDate: new Date(s.startDate),
             endDate: new Date(s.endDate),
             typeNum,
-            activityType: workoutEmoji(typeNum) + " " + workoutLabel(typeNum),
+            activityType: workoutLabel(typeNum), // ← kein Emoji mehr
             durationMin: Math.round(dur),
             calories: Math.round(s.totalEnergyBurned?.quantity ?? 0),
             distanceKm: Math.round((s.totalDistance?.quantity ?? 0) * 10) / 10,

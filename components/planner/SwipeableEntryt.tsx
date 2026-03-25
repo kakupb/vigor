@@ -14,6 +14,7 @@ import {
 type SwipeableEntryProps = {
   entry: PlannerEntry;
   onDelete: (id: string) => void;
+  onLongPress?: () => void;
   onEdit: () => void;
   onToggleDone: () => void;
   children: React.ReactNode;
@@ -26,6 +27,7 @@ export function SwipeableEntry({
   entry,
   onDelete,
   onEdit,
+  onLongPress,
   onToggleDone,
   children,
 }: SwipeableEntryProps) {
@@ -136,7 +138,12 @@ export function SwipeableEntry({
         {...panResponder.panHandlers}
         style={[styles.content, { transform: [{ translateX }] }]}
       >
-        <Pressable onPress={onEdit} style={{ flex: 1 }}>
+        <Pressable
+          onPress={onEdit}
+          onLongPress={onLongPress}
+          delayLongPress={350}
+          style={{ flex: 1 }}
+        >
           {children}
         </Pressable>
 

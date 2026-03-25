@@ -1,7 +1,4 @@
 // components/today/OnboardingModal.tsx
-// Feature-Tour nach erstem Login.
-// Kein "Daten werden lokal gespeichert" mehr — das stimmt nicht mehr.
-// Name wird im Profil gesetzt, nicht hier (kommt aus Auth).
 import { useUserStore } from "@/store/userStore";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -23,35 +20,35 @@ const FEATURES = [
   {
     icon: "checkmark-circle-outline" as const,
     color: "#4b60af",
-    bg: "#f0f4ff",
+    bg: "#eef1ff",
     title: "Habits tracken",
     desc: "Erstelle tägliche Habits und verfolge deinen Streak. Kategorien, Ziele und flexible Zeitpläne inklusive.",
   },
   {
     icon: "calendar-outline" as const,
     color: "#3b8995",
-    bg: "#f0fbfc",
+    bg: "#edfafc",
     title: "Planner",
     desc: "Plane deinen Tag mit Zeitblöcken. Importiere Trainings aus Apple Health direkt in deinen Tag.",
   },
   {
     icon: "document-text-outline" as const,
     color: "#10b981",
-    bg: "#f0fdf4",
+    bg: "#edfdf5",
     title: "Notizen",
     desc: "Schreibe Notizen mit Fotos und Tabellen. Verknüpfe sie mit Habits und Plannereinträgen.",
   },
   {
     icon: "bar-chart-outline" as const,
     color: "#8b5cf6",
-    bg: "#faf5ff",
+    bg: "#f5f3ff",
     title: "Statistiken & Health",
     desc: "Verfolge Streaks, Heatmaps und Gesundheitsdaten direkt aus Apple Health.",
   },
   {
     icon: "shield-checkmark-outline" as const,
     color: "#059669",
-    bg: "#f0fdf4",
+    bg: "#edfdf5",
     title: "Deine Daten, sicher",
     desc: "Habits, Notizen und Planner werden verschlüsselt in der EU-Cloud gespeichert. Gesundheitsdaten verlassen niemals dein Gerät.",
   },
@@ -60,67 +57,33 @@ const FEATURES = [
 export function OnboardingModal({ visible }: { visible: boolean }) {
   const insets = useSafeAreaInsets();
   const setName = useUserStore((s) => s.setName);
+  const [index, setIndex] = useState(0);
 
-  const [featureIndex, setFeatureIndex] = useState(0);
-  const [displayIndex, setDisplayIndex] = useState(0);
-  const [pendingIndex, setPendingIndex] = useState<number | null>(null);
+  // Ein einziger Animated-Wert bewegt den gesamten Track
+  const translateX = useRef(new Animated.Value(0)).current;
 
-  const currentAnim = useRef(new Animated.Value(1)).current;
-  const nextAnim = useRef(new Animated.Value(0)).current;
-  const isAnimating = useRef(false);
+  const isLast = index === FEATURES.length - 1;
 
-  const isLast = featureIndex === FEATURES.length - 1;
-
-  function goToFeature(next: number) {
-    if (isAnimating.current) return;
-    isAnimating.current = true;
-    setPendingIndex(next);
-    nextAnim.setValue(0);
-
-    Animated.parallel([
-      Animated.timing(currentAnim, {
-        toValue: -1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(nextAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setDisplayIndex(next);
-      setFeatureIndex(next);
-      setPendingIndex(null);
-      currentAnim.setValue(1);
-      nextAnim.setValue(0);
-      isAnimating.current = false;
-    });
-
+  function goTo(next: number) {
+    if (next === index) return;
+    setIndex(next);
+    Animated.spring(translateX, {
+      toValue: -next * SW,
+      useNativeDriver: true,
+      tension: 68,
+      friction: 11,
+      overshootClamping: true,
+    }).start();
     Haptics.selectionAsync();
   }
 
   function handleNext() {
     if (isLast) {
-      // Letzter Slide → Feature als "gesehen" markieren (leerer Name = OK, kommt aus Auth)
       setName("_onboarded");
     } else {
-      goToFeature(featureIndex + 1);
+      goTo(index + 1);
     }
   }
-
-  function handleSkip() {
-    setName("_onboarded");
-  }
-
-  const currentTX = currentAnim.interpolate({
-    inputRange: [-1, 0, 1],
-    outputRange: [-SW, SW, 0],
-  });
-  const currentOP = currentAnim.interpolate({
-    inputRange: [-1, -0.4, 1],
-    outputRange: [0, 0, 1],
-  });
 
   return (
     <Modal visible={visible} animationType="fade" statusBarTranslucent>
@@ -130,76 +93,61 @@ export function OnboardingModal({ visible }: { visible: boolean }) {
           { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 },
         ]}
       >
-        {/* Slides */}
-        <View style={s.slideArea}>
-          {/* Current */}
+        {/* ── Karussell ──────────────────────────────────────── */}
+        <View style={s.viewport}>
+          {/*
+            Der Track ist FEATURES.length × SW breit.
+            Alle Slides liegen nebeneinander — wir verschieben nur diesen
+            einen Container. Kein Sync-Problem, keine Glitches.
+          */}
           <Animated.View
             style={[
-              s.slide,
-              { transform: [{ translateX: currentTX }], opacity: currentOP },
+              s.track,
+              { width: SW * FEATURES.length, transform: [{ translateX }] },
             ]}
           >
-            <SlideContent index={displayIndex} />
+            {FEATURES.map((f, i) => (
+              <View key={i} style={[s.slide, { width: SW }]}>
+                <View style={[s.iconWrap, { backgroundColor: f.bg }]}>
+                  <Ionicons name={f.icon} size={56} color={f.color} />
+                </View>
+                <Text style={s.title}>{f.title}</Text>
+                <Text style={s.desc}>{f.desc}</Text>
+              </View>
+            ))}
           </Animated.View>
-
-          {/* Pending (slides in from right) */}
-          {pendingIndex !== null && (
-            <Animated.View
-              style={[
-                s.slide,
-                {
-                  transform: [
-                    {
-                      translateX: nextAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [SW, 0],
-                      }),
-                    },
-                  ],
-                  opacity: nextAnim.interpolate({
-                    inputRange: [0, 0.4, 1],
-                    outputRange: [0, 0.6, 1],
-                  }),
-                },
-              ]}
-            >
-              <SlideContent index={pendingIndex} />
-            </Animated.View>
-          )}
         </View>
 
-        {/* Footer */}
+        {/* ── Footer ─────────────────────────────────────────── */}
         <View style={s.footer}>
-          {/* Dots */}
           <View style={s.dots}>
             {FEATURES.map((_, i) => (
               <Pressable
                 key={i}
-                onPress={() => i > featureIndex && goToFeature(i)}
+                onPress={() => i !== index && goTo(i)}
+                hitSlop={10}
               >
                 <View
-                  style={[
-                    s.dot,
-                    i === featureIndex ? s.dotActive : s.dotInactive,
-                  ]}
+                  style={[s.dot, i === index ? s.dotActive : s.dotInactive]}
                 />
               </Pressable>
             ))}
           </View>
 
-          {/* Button */}
-          <Pressable onPress={handleNext} style={s.btn}>
+          <Pressable
+            onPress={handleNext}
+            style={({ pressed }) => [s.btn, pressed && { opacity: 0.84 }]}
+          >
             <Text style={s.btnTx}>{isLast ? "Los geht's!" : "Weiter"}</Text>
             <Ionicons
               name={isLast ? "checkmark" : "arrow-forward"}
               size={18}
-              color="white"
+              color="#fff"
             />
           </Pressable>
 
-          {/* Überspringen */}
           {!isLast && (
-            <Pressable onPress={handleSkip} style={s.skipBtn}>
+            <Pressable onPress={() => setName("_onboarded")} style={s.skipBtn}>
               <Text style={s.skipTx}>Überspringen</Text>
             </Pressable>
           )}
@@ -209,36 +157,43 @@ export function OnboardingModal({ visible }: { visible: boolean }) {
   );
 }
 
-function SlideContent({ index }: { index: number }) {
-  const f = FEATURES[index];
-  return (
-    <View style={sl.wrap}>
-      <View style={[sl.iconWrap, { backgroundColor: f.bg }]}>
-        <Ionicons name={f.icon} size={60} color={f.color} />
-      </View>
-      <Text style={sl.title}>{f.title}</Text>
-      <Text style={sl.desc}>{f.desc}</Text>
-    </View>
-  );
-}
-
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#fff" },
-  slideArea: { flex: 1, overflow: "hidden" },
+  viewport: { flex: 1, overflow: "hidden" },
+  track: { flexDirection: "row", flex: 1 },
   slide: {
-    position: "absolute",
-    inset: 0,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 36,
+    paddingHorizontal: 40,
+    gap: 24,
+  },
+  iconWrap: {
+    width: 120,
+    height: 120,
+    borderRadius: 36,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#0f172a",
+    textAlign: "center",
+    letterSpacing: -0.5,
+  },
+  desc: {
+    fontSize: 16,
+    color: "#64748b",
+    textAlign: "center",
+    lineHeight: 25,
   },
   footer: {
     paddingHorizontal: 28,
-    paddingTop: 16,
+    paddingTop: 20,
     gap: 14,
     alignItems: "center",
   },
-  dots: { flexDirection: "row", gap: 6 },
+  dots: { flexDirection: "row", gap: 7 },
   dot: { height: 6, borderRadius: 3 },
   dotActive: { width: 28, backgroundColor: "#3b8995" },
   dotInactive: { width: 6, backgroundColor: "#e2e8f0" },
@@ -256,23 +211,4 @@ const s = StyleSheet.create({
   btnTx: { color: "#fff", fontWeight: "700", fontSize: 16 },
   skipBtn: { paddingVertical: 4 },
   skipTx: { fontSize: 14, color: "#94a3b8", fontWeight: "500" },
-});
-
-const sl = StyleSheet.create({
-  wrap: { alignItems: "center", gap: 24 },
-  iconWrap: {
-    width: 128,
-    height: 128,
-    borderRadius: 40,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#0f172a",
-    textAlign: "center",
-    letterSpacing: -0.5,
-  },
-  desc: { fontSize: 16, color: "#64748b", textAlign: "center", lineHeight: 25 },
 });

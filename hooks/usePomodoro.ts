@@ -1,105 +1,173 @@
 // hooks/usePomodoro.ts
-
-import { POMODORO_CONFIG } from "@/services/focusService";
-import { PomodoroState } from "@/types/focus";
 import * as Haptics from "expo-haptics";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-export function usePomodoro() {
+export type PomodoroConfig = {
+  workMinutes: number;
+  breakMinutes: number;
+  longBreakMinutes: number;
+  longBreakAfter: number;
+};
+
+export const DEFAULT_POMODORO_CONFIG: PomodoroConfig = {
+  workMinutes: 25,
+  breakMinutes: 5,
+  longBreakMinutes: 15,
+  longBreakAfter: 4,
+};
+
+export type PomodoroState = {
+  isActive: boolean;
+  timeRemaining: number;
+  isBreak: boolean;
+  completedPomodoros: number;
+};
+
+export function usePomodoro(
+  config: PomodoroConfig = DEFAULT_POMODORO_CONFIG,
+  onPhaseComplete?: () => void
+) {
   const [state, setState] = useState<PomodoroState>({
     isActive: false,
-    timeRemaining: POMODORO_CONFIG.workDuration,
+    timeRemaining: config.workMinutes * 60,
     isBreak: false,
     completedPomodoros: 0,
   });
 
+  const stateRef = useRef(state);
+  const configRef = useRef(config);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onPhaseCompleteRef = useRef(onPhaseComplete);
 
-  // Tick every second
   useEffect(() => {
-    if (state.isActive) {
-      intervalRef.current = setInterval(() => {
-        setState((prev) => {
-          if (prev.timeRemaining <= 1) {
-            // Timer finished!
-            handleTimerComplete(prev);
-            return prev;
-          }
+    onPhaseCompleteRef.current = onPhaseComplete;
+  }, [onPhaseComplete]);
 
-          return {
-            ...prev,
-            timeRemaining: prev.timeRemaining - 1,
-          };
-        });
-      }, 1000) as any;
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [state.isActive]);
-
-  function handleTimerComplete(currentState: PomodoroState) {
-    // Haptic feedback
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    if (currentState.isBreak) {
-      // Break finished → Start work
-      setState({
+  // Auto-reset wenn workMinutes sich ändert und Timer pausiert
+  useEffect(() => {
+    const prevWork = configRef.current.workMinutes;
+    configRef.current = config;
+    if (
+      config.workMinutes !== prevWork &&
+      !stateRef.current.isActive &&
+      !stateRef.current.isBreak
+    ) {
+      const next: PomodoroState = {
         isActive: false,
-        timeRemaining: POMODORO_CONFIG.workDuration,
+        timeRemaining: config.workMinutes * 60,
         isBreak: false,
-        completedPomodoros: currentState.completedPomodoros,
-      });
-    } else {
-      // Work finished → Start break
-      const newCount = currentState.completedPomodoros + 1;
-      const isLongBreak = newCount % POMODORO_CONFIG.longBreakAfter === 0;
+        completedPomodoros: stateRef.current.completedPomodoros,
+      };
+      stateRef.current = next;
+      setState(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    config.workMinutes,
+    config.breakMinutes,
+    config.longBreakMinutes,
+    config.longBreakAfter,
+  ]);
 
-      setState({
-        isActive: false,
-        timeRemaining: isLongBreak
-          ? POMODORO_CONFIG.longBreakDuration
-          : POMODORO_CONFIG.breakDuration,
-        isBreak: true,
-        completedPomodoros: newCount,
-      });
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const tick = useCallback(() => {
+    const cur = stateRef.current;
+    if (cur.timeRemaining <= 1) {
+      stopInterval();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onPhaseCompleteRef.current?.();
+      if (cur.isBreak) {
+        const next: PomodoroState = {
+          isActive: false,
+          timeRemaining: configRef.current.workMinutes * 60,
+          isBreak: false,
+          completedPomodoros: cur.completedPomodoros,
+        };
+        stateRef.current = next;
+        setState(next);
+      } else {
+        const n = cur.completedPomodoros + 1;
+        const long = n % configRef.current.longBreakAfter === 0;
+        const next: PomodoroState = {
+          isActive: false,
+          timeRemaining:
+            (long
+              ? configRef.current.longBreakMinutes
+              : configRef.current.breakMinutes) * 60,
+          isBreak: true,
+          completedPomodoros: n,
+        };
+        stateRef.current = next;
+        setState(next);
+      }
+    } else {
+      const next = { ...cur, timeRemaining: cur.timeRemaining - 1 };
+      stateRef.current = next;
+      setState(next);
+    }
+  }, []);
+
+  function stopInterval() {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
   }
-
   function start() {
-    setState((prev) => ({ ...prev, isActive: true }));
+    if (intervalRef.current) return;
+    stateRef.current = { ...stateRef.current, isActive: true };
+    setState((p) => ({ ...p, isActive: true }));
+    intervalRef.current = setInterval(tick, 1000);
   }
-
   function pause() {
-    setState((prev) => ({ ...prev, isActive: false }));
+    stopInterval();
+    stateRef.current = { ...stateRef.current, isActive: false };
+    setState((p) => ({ ...p, isActive: false }));
   }
-
-  function reset() {
-    setState({
+  function reset(explicitConfig?: PomodoroConfig) {
+    stopInterval();
+    const cfg = explicitConfig ?? configRef.current;
+    const next: PomodoroState = {
       isActive: false,
-      timeRemaining: POMODORO_CONFIG.workDuration,
+      timeRemaining: cfg.workMinutes * 60,
       isBreak: false,
       completedPomodoros: 0,
-    });
+    };
+    stateRef.current = next;
+    setState(next);
   }
-
   function skip() {
-    handleTimerComplete(state);
+    pause();
+    const cur = stateRef.current;
+    if (cur.isBreak) {
+      const next: PomodoroState = {
+        isActive: false,
+        timeRemaining: configRef.current.workMinutes * 60,
+        isBreak: false,
+        completedPomodoros: cur.completedPomodoros,
+      };
+      stateRef.current = next;
+      setState(next);
+    } else {
+      const n = cur.completedPomodoros + 1;
+      const long = n % configRef.current.longBreakAfter === 0;
+      const next: PomodoroState = {
+        isActive: false,
+        timeRemaining:
+          (long
+            ? configRef.current.longBreakMinutes
+            : configRef.current.breakMinutes) * 60,
+        isBreak: true,
+        completedPomodoros: n,
+      };
+      stateRef.current = next;
+      setState(next);
+    }
   }
 
-  return {
-    state,
-    start,
-    pause,
-    reset,
-    skip,
-  };
+  useEffect(() => () => stopInterval(), []);
+  return { state, start, pause, reset, skip };
 }

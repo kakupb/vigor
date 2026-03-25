@@ -21,6 +21,7 @@ export function PlannerEntryCard({
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
+      delayLongPress={250}
       style={{
         flexDirection: "row",
         alignItems: "center",

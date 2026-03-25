@@ -338,6 +338,7 @@ export default function DayTimeline({
                     entry={entry}
                     onDelete={deleteEntry}
                     onEdit={() => onLongPressEntry?.(entry)}
+                    onLongPress={() => onLongPressEntry?.(entry)}
                     onToggleDone={() => onPressEntry?.(entry)}
                   >
                     <View

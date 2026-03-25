@@ -6,16 +6,79 @@ import {
 } from "@/hooks/useHealthData";
 import {
   ALL_METRICS,
+  MetricIcon,
   MetricId,
   useHealthMetricsStore,
 } from "@/store/healthMetricsStore";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { WorkoutHistoryModal } from "./WorkoutHistoryModal";
 
+// ─── Icon-Hilfsfunktion ───────────────────────────────────────────────────────
+function MetricIconView({
+  icon,
+  size = 18,
+  color,
+}: {
+  icon: MetricIcon;
+  size?: number;
+  color?: string;
+}) {
+  if (icon.lib === "mci") {
+    return (
+      <MaterialCommunityIcons
+        name={icon.name as any}
+        size={size}
+        color={color}
+      />
+    );
+  }
+  return <Ionicons name={icon.name as any} size={size} color={color} />;
+}
+
+// ─── Workout-Icon-Map (gleiche Map wie WorkoutTab) ────────────────────────────
+type WDef = { lib: "I" | "M"; icon: string; color: string };
+const WO_MAP: Record<number, WDef> = {
+  37: { lib: "I", icon: "walk-outline", color: "#d97706" },
+  16: { lib: "I", icon: "walk-outline", color: "#d97706" },
+  13: { lib: "M", icon: "bike", color: "#059669" },
+  14: { lib: "M", icon: "bike", color: "#059669" },
+  46: { lib: "I", icon: "water-outline", color: "#0369a1" },
+  82: { lib: "I", icon: "water-outline", color: "#0369a1" },
+  52: { lib: "I", icon: "footsteps", color: "#6b7280" },
+  20: { lib: "M", icon: "weight-lifter", color: "#7c3aed" },
+  63: { lib: "M", icon: "weight-lifter", color: "#7c3aed" },
+  48: { lib: "M", icon: "yoga", color: "#db2777" },
+  57: { lib: "M", icon: "lightning-bolt", color: "#dc2626" },
+  3000: { lib: "M", icon: "run", color: "#0e7490" },
+};
+const getWO = (n: number): WDef =>
+  WO_MAP[n] ?? { lib: "M", icon: "run", color: "#0e7490" };
+
+function WorkoutIcon({
+  typeNum,
+  size = 20,
+}: {
+  typeNum: number;
+  size?: number;
+}) {
+  const d = getWO(typeNum);
+  if (d.lib === "M") {
+    return (
+      <MaterialCommunityIcons
+        name={d.icon as any}
+        size={size}
+        color={d.color}
+      />
+    );
+  }
+  return <Ionicons name={d.icon as any} size={size} color={d.color} />;
+}
+
 // ─── Metric Karte ─────────────────────────────────────────────────────────────
 function HealthMetric({
-  emoji,
+  icon,
   label,
   value,
   unit,
@@ -24,7 +87,7 @@ function HealthMetric({
   progress,
   goal,
 }: {
-  emoji: string;
+  icon: MetricIcon;
   label: string;
   value: number;
   unit: string;
@@ -35,11 +98,10 @@ function HealthMetric({
 }) {
   const displayValue =
     unit === "Schritte" ? value.toLocaleString("de-DE") : value;
-
   return (
     <View style={[hm.card, { backgroundColor: bg }]}>
       <View style={hm.cardTop}>
-        <Text style={hm.emoji}>{emoji}</Text>
+        <MetricIconView icon={icon} size={18} color={color} />
         <Text style={[hm.label, { color }]}>{label}</Text>
       </View>
       <View style={hm.valueRow}>
@@ -72,7 +134,6 @@ const hm = StyleSheet.create({
     gap: 6,
     marginBottom: 4,
   },
-  emoji: { fontSize: 16 },
   label: {
     fontSize: 11,
     fontWeight: "700",
@@ -95,6 +156,7 @@ const hm = StyleSheet.create({
 
 // ─── Letztes Workout ──────────────────────────────────────────────────────────
 function LastWorkoutCard({ workout }: { workout: WorkoutData }) {
+  const d = getWO(workout.typeNum);
   const dateStr = workout.date.toLocaleDateString("de-DE", {
     weekday: "short",
     day: "2-digit",
@@ -103,8 +165,14 @@ function LastWorkoutCard({ workout }: { workout: WorkoutData }) {
   return (
     <View style={wo.card}>
       <View style={wo.left}>
-        <Text style={wo.title}>{workout.activityType}</Text>
-        <Text style={wo.date}>{dateStr}</Text>
+        {/* Icon-Kreis statt Emoji im activityType-String */}
+        <View style={[wo.iconCircle, { backgroundColor: d.color + "18" }]}>
+          <WorkoutIcon typeNum={workout.typeNum} size={20} />
+        </View>
+        <View>
+          <Text style={wo.title}>{workout.activityType}</Text>
+          <Text style={wo.date}>{dateStr}</Text>
+        </View>
       </View>
       <View style={wo.stats}>
         <View style={wo.stat}>
@@ -137,7 +205,14 @@ const wo = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  left: { gap: 3 },
+  left: { flexDirection: "row", alignItems: "center", gap: 10 },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   title: { fontSize: 15, fontWeight: "700", color: "#1e3a5f" },
   date: { fontSize: 12, color: "#64748b" },
   stats: { flexDirection: "row", gap: 14 },
@@ -166,7 +241,11 @@ function ConfigureTab() {
                 enabled && { backgroundColor: m.color, borderColor: m.color },
               ]}
             >
-              <Text style={cfg.chipEmoji}>{m.emoji}</Text>
+              <MetricIconView
+                icon={m.icon}
+                size={16}
+                color={enabled ? "white" : m.color}
+              />
               <Text style={[cfg.chipLabel, enabled && { color: "white" }]}>
                 {m.label}
               </Text>
@@ -178,9 +257,11 @@ function ConfigureTab() {
                     : { backgroundColor: "#e2e8f0" },
                 ]}
               >
-                <Text style={[cfg.toggleText, enabled && { color: "white" }]}>
-                  {enabled ? "✓" : "+"}
-                </Text>
+                <Ionicons
+                  name={enabled ? "checkmark" : "add"}
+                  size={13}
+                  color={enabled ? "white" : "#64748b"}
+                />
               </View>
             </Pressable>
           );
@@ -205,7 +286,6 @@ const cfg = StyleSheet.create({
     borderColor: "#e2e8f0",
     backgroundColor: "#f8f9fb",
   },
-  chipEmoji: { fontSize: 16 },
   chipLabel: { fontSize: 14, fontWeight: "600", color: "#334155" },
   toggle: {
     width: 22,
@@ -215,31 +295,9 @@ const cfg = StyleSheet.create({
     alignItems: "center",
     marginLeft: 2,
   },
-  toggleText: { fontSize: 12, fontWeight: "700", color: "#64748b" },
-  futureBox: {
-    backgroundColor: "#f8f9fb",
-    borderRadius: 14,
-    padding: 16,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderStyle: "dashed",
-  },
-  futureTitle: { fontSize: 14, fontWeight: "700", color: "#334155" },
-  futureDesc: { fontSize: 12, color: "#64748b", lineHeight: 17 },
-  futureBadge: {
-    alignSelf: "flex-start",
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-    backgroundColor: "#f0f4ff",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#c7d2fe",
-  },
-  futureBadgeText: { fontSize: 11, fontWeight: "600", color: "#4b60af" },
 });
 
-// ─── Daten-Inhalt – NUR nach Auth ─────────────────────────────────────────────
+// ─── Daten-Inhalt ─────────────────────────────────────────────────────────────
 function HealthDataContent({ onConfigure }: { onConfigure: () => void }) {
   const health = useHealthValues();
   const { enabledMetrics, goals } = useHealthMetricsStore();
@@ -268,7 +326,6 @@ function HealthDataContent({ onConfigure }: { onConfigure: () => void }) {
 
   return (
     <View style={{ gap: 12 }}>
-      {/* Letztes Workout – nur wenn vorhanden */}
       {health.lastWorkout && (
         <View style={{ gap: 6 }}>
           <Text style={s.sectionLabel}>Letztes Workout · Fitness App</Text>
@@ -276,32 +333,19 @@ function HealthDataContent({ onConfigure }: { onConfigure: () => void }) {
         </View>
       )}
 
-      {/* ✅ Workout-Import Button – IMMER sichtbar, unabhängig von lastWorkout */}
       <Pressable
         onPress={() => setWorkoutHistoryVisible(true)}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          paddingVertical: 12,
-          backgroundColor: "#f0f4ff",
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: "#c7d2fe",
-        }}
+        style={s.importBtn}
       >
-        <Text style={{ fontSize: 14, fontWeight: "700", color: "#4b60af" }}>
-          🏋️ Alle Trainings · Importieren
-        </Text>
+        <MaterialCommunityIcons name="dumbbell" size={16} color="#4b60af" />
+        <Text style={s.importBtnText}>Alle Trainings · Importieren</Text>
       </Pressable>
 
-      {/* Modal außerhalb des Buttons, aber innerhalb der Komponente */}
       <WorkoutHistoryModal
         visible={workoutHistoryVisible}
         onClose={() => setWorkoutHistoryVisible(false)}
       />
 
-      {/* Metriken */}
       {activeMetrics.length === 0 ? (
         <Pressable onPress={onConfigure} style={s.emptyBox}>
           <Text style={s.emptyText}>
@@ -320,7 +364,7 @@ function HealthDataContent({ onConfigure }: { onConfigure: () => void }) {
             return (
               <HealthMetric
                 key={m.id}
-                emoji={m.emoji}
+                icon={m.icon}
                 label={m.label}
                 value={value}
                 unit={m.unit}
@@ -342,18 +386,14 @@ export function HealthSection() {
   const { isAvailable, isAuthorized, requestAuth } = useHealthAuth();
   const [tab, setTab] = useState<"data" | "configure">("data");
   const [authChecked, setAuthChecked] = useState(false);
+
   useEffect(() => {
     const t = setTimeout(() => setAuthChecked(true), 300);
     return () => clearTimeout(t);
   }, []);
 
   if (!isAvailable || Platform.OS !== "ios") return null;
-  if (!authChecked) return null; // ← Verhindert den Fehler
-
-  if (!isAuthorized) {
-    // ... Connect-Screen
-  }
-  if (!isAvailable || Platform.OS !== "ios") return null;
+  if (!authChecked) return null;
 
   if (!isAuthorized) {
     return (
@@ -365,7 +405,13 @@ export function HealthSection() {
           </View>
         </View>
         <View style={s.connectBox}>
-          <Text style={s.connectEmoji}>🩺</Text>
+          <View style={s.connectIconCircle}>
+            <MaterialCommunityIcons
+              name="heart-pulse"
+              size={32}
+              color="#3b8995"
+            />
+          </View>
           <Text style={s.connectTitle}>Health-Daten verbinden</Text>
           <Text style={s.connectDesc}>
             Verknüpfe Apple Health um Schritte, Schlaf, Herzrate und Workouts
@@ -396,11 +442,21 @@ export function HealthSection() {
             onPress={() => setTab("configure")}
             style={[s.tabBtn, tab === "configure" && s.tabBtnActive]}
           >
-            <Text
-              style={[s.tabBtnText, tab === "configure" && s.tabBtnTextActive]}
-            >
-              ⚙ Anpassen
-            </Text>
+            <View style={s.tabBtnInner}>
+              <Ionicons
+                name="settings-outline"
+                size={12}
+                color={tab === "configure" ? "#0f172a" : "#94a3b8"}
+              />
+              <Text
+                style={[
+                  s.tabBtnText,
+                  tab === "configure" && s.tabBtnTextActive,
+                ]}
+              >
+                Anpassen
+              </Text>
+            </View>
           </Pressable>
         </View>
       </View>
@@ -461,6 +517,7 @@ const s = StyleSheet.create({
   },
   tabBtn: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 16 },
   tabBtnActive: { backgroundColor: "white" },
+  tabBtnInner: { flexDirection: "row", alignItems: "center", gap: 4 },
   tabBtnText: { fontSize: 12, fontWeight: "600", color: "#94a3b8" },
   tabBtnTextActive: { color: "#0f172a" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
@@ -472,8 +529,27 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: { fontSize: 13, color: "#94a3b8", textAlign: "center" },
+  importBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    backgroundColor: "#f0f4ff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#c7d2fe",
+  },
+  importBtnText: { fontSize: 14, fontWeight: "700", color: "#4b60af" },
   connectBox: { alignItems: "center", paddingVertical: 12, gap: 10 },
-  connectEmoji: { fontSize: 40 },
+  connectIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#f0fbfc",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   connectTitle: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
   connectDesc: {
     fontSize: 14,

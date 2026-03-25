@@ -32,7 +32,7 @@ export const SLOTH_MOODS: Record<PlannerCategory | "default", SlothMood> = {
   work: {
     emoji: "💼",
     activity: "arbeitet konzentriert",
-    motivationalText: "Das Faultier tippt fleißig!",
+    motivationalText: "Finger auf die Tasten!",
   },
   fitness: {
     emoji: "🧘",
@@ -81,7 +81,7 @@ export const SLOTH_MOODS: Record<PlannerCategory | "default", SlothMood> = {
   },
   default: {
     emoji: "🦥",
-    activity: "fokussiert dich",
+    activity: "Fokus",
     motivationalText: "Auch wenn langsam, fokussiert!",
   },
 };
