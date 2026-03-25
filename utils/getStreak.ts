@@ -1,60 +1,7 @@
 // utils/getStreak.ts
-import { Habit, HabitSchedule } from "@/types/habit";
+import { Habit } from "@/types/habit";
 import { getTodayTimestamp } from "./dateUtils";
-
-// ─── Hilfsfunktion: War ein bestimmter Timestamp ein geplanter Tag? ─────────
-function wasScheduledOn(ts: number, schedule?: HabitSchedule): boolean {
-  if (!schedule) return true; // kein Zeitplan = täglich
-
-  const date = new Date(ts);
-  const dateStr = date.toISOString().split("T")[0];
-
-  // Vor Startdatum?
-  if (schedule.startDate && dateStr < schedule.startDate) return false;
-  // Nach Enddatum?
-  if (schedule.endDate && dateStr > schedule.endDate) return false;
-
-  const repeatUnit = schedule.repeatUnit ?? "day";
-  const repeatEvery = schedule.repeatEvery ?? 1;
-
-  if (repeatUnit === "day") {
-    if (repeatEvery === 1) return true;
-    const ref = schedule.startDate ? new Date(schedule.startDate) : date;
-    ref.setHours(0, 0, 0, 0);
-    const diffDays = Math.round((date.getTime() - ref.getTime()) / 86_400_000);
-    return diffDays % repeatEvery === 0;
-  }
-
-  if (repeatUnit === "week") {
-    if (schedule.weekDays && schedule.weekDays.length > 0) {
-      return schedule.weekDays.includes(date.getDay());
-    }
-    const ref = schedule.startDate ? new Date(schedule.startDate) : date;
-    ref.setHours(0, 0, 0, 0);
-    const diffDays = Math.round((date.getTime() - ref.getTime()) / 86_400_000);
-    return diffDays % (repeatEvery * 7) === 0;
-  }
-
-  if (repeatUnit === "month") {
-    const ref = schedule.startDate ? new Date(schedule.startDate) : date;
-    const monthDiff =
-      (date.getFullYear() - ref.getFullYear()) * 12 +
-      (date.getMonth() - ref.getMonth());
-    return monthDiff % repeatEvery === 0 && date.getDate() === ref.getDate();
-  }
-
-  if (repeatUnit === "year") {
-    const ref = schedule.startDate ? new Date(schedule.startDate) : date;
-    const yearDiff = date.getFullYear() - ref.getFullYear();
-    return (
-      yearDiff % repeatEvery === 0 &&
-      date.getMonth() === ref.getMonth() &&
-      date.getDate() === ref.getDate()
-    );
-  }
-
-  return true;
-}
+import { wasScheduledOn } from "./scheduleUtils";
 
 // ─── getStreak ───────────────────────────────────────────────────────────────
 /**
@@ -104,9 +51,8 @@ export function getStreak(habit: Habit, allowGracePeriod = false): number {
     const scheduled = wasScheduledOn(prev, schedule);
 
     if (!scheduled) {
-      // Kein geplanter Tag → überspringen, nicht als Lücke zählen
+      // Nicht-geplanter Tag → überspringen
       cursor = prev;
-      // Schutz gegen Endlosschleife: max 1 Jahr zurück
       if (today - cursor > 365 * 86_400_000) break;
       continue;
     }
@@ -140,7 +86,7 @@ export function getLongestStreak(habit: Habit): number {
     const from = sorted[i - 1];
     const to = sorted[i];
 
-    // Prüfe ob zwischen from und to kein geplanter Tag ausgelassen wurde
+    // Prüfe ob zwischen from und to ein geplanter Tag ausgelassen wurde
     let gapHasScheduledDay = false;
     let cursor = from + 86_400_000;
     while (cursor < to) {
@@ -152,11 +98,9 @@ export function getLongestStreak(habit: Habit): number {
     }
 
     if (!gapHasScheduledDay) {
-      // Kein geplanter Tag dazwischen → Streak läuft weiter
       currentStreak++;
       maxStreak = Math.max(maxStreak, currentStreak);
     } else {
-      // Geplanter Tag verpasst → Streak reset
       currentStreak = 1;
     }
   }

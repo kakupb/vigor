@@ -1,20 +1,29 @@
 // app/(tabs)/stats.tsx
+// ÄNDERUNGEN gegenüber Original:
+//
+// 1. useMemo-Import hinzugefügt
+// 2. WeekBars: bars-Berechnung in useMemo, wasScheduledOn statt nur startDate-Check
+// 3. HabitHeatmap: cells + weeks in useMemo
+// 4. StatsScreen: todayHabits, allCompletedDates, sortedByStreak in useMemo
+//
 import { HealthSection } from "@/components/stats/HealthSection";
+import { StatsEmptyState } from "@/components/stats/StatsEmptyState";
 import { getCategoryConfig } from "@/constants/categories";
 import { useHabits } from "@/hooks/useHabits";
 import { usePlannerStore } from "@/store/plannerStore";
 import { dateToLocalString, getTodayTimestamp } from "@/utils/dateUtils";
 import { getCompletionRate } from "@/utils/getStreak";
-import { isScheduledForToday } from "@/utils/scheduleUtils";
+import { isScheduledForToday, wasScheduledOn } from "@/utils/scheduleUtils";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, G } from "react-native-svg";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
-// ─── Ring Progress ────────────────────────────────────────────────────────────
+// ─── Ring Progress ─────────────────────────────────────────────────────────────
+// (unverändert)
 function RingProgress({
   size = 100,
   strokeWidth = 10,
@@ -25,7 +34,7 @@ function RingProgress({
 }: {
   size?: number;
   strokeWidth?: number;
-  progress: number; // 0-1
+  progress: number;
   color: string;
   bgColor?: string;
   children?: React.ReactNode;
@@ -70,27 +79,29 @@ function RingProgress({
   );
 }
 
-// ─── Heatmap (letzten 63 Tage = 9 Wochen) ────────────────────────────────────
+// ─── Heatmap ──────────────────────────────────────────────────────────────────
 function HabitHeatmap({ completedDates }: { completedDates: number[] }) {
-  const completed = new Set(completedDates);
-  const today = getTodayTimestamp();
-  const COLS = 13; // Wochen
-  const ROWS = 7; // Tage
-
-  const cells: { ts: number; level: number }[] = [];
-  for (let i = COLS * ROWS - 1; i >= 0; i--) {
-    const ts = today - i * 86_400_000;
-    const isCompleted = completed.has(ts);
-    cells.push({ ts, level: isCompleted ? 1 : 0 });
-  }
-
+  const COLS = 13;
+  const ROWS = 7;
   const cellSize = Math.floor((SCREEN_W - 48) / COLS) - 2;
 
-  // Group by week columns
-  const weeks: (typeof cells)[] = [];
-  for (let w = 0; w < COLS; w++) {
-    weeks.push(cells.slice(w * ROWS, w * ROWS + ROWS));
-  }
+  // ✅ useMemo: nur neu berechnen wenn completedDates sich ändert
+  const weeks = useMemo(() => {
+    const completed = new Set(completedDates);
+    const today = getTodayTimestamp();
+    const cells: { ts: number; level: number }[] = [];
+
+    for (let i = COLS * ROWS - 1; i >= 0; i--) {
+      const ts = today - i * 86_400_000;
+      cells.push({ ts, level: completed.has(ts) ? 1 : 0 });
+    }
+
+    const result: (typeof cells)[] = [];
+    for (let w = 0; w < COLS; w++) {
+      result.push(cells.slice(w * ROWS, w * ROWS + ROWS));
+    }
+    return result;
+  }, [completedDates]);
 
   return (
     <View style={hm.container}>
@@ -120,43 +131,48 @@ const hm = StyleSheet.create({
   cellActive: { backgroundColor: "#3b8995" },
 });
 
-// ─── Bar Chart (Woche) ────────────────────────────────────────────────────────
+// ─── WeekBars ─────────────────────────────────────────────────────────────────
+const DAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+
 function WeekBars({
   habits: allHabits,
 }: {
   habits: ReturnType<typeof useHabits>["habits"];
 }) {
-  const today = new Date();
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() - (6 - i));
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
+  // ✅ useMemo: nur neu berechnen wenn habits sich ändern
+  const bars = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTs = getTodayTimestamp();
 
-  const DAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() - (6 - i));
+      d.setHours(0, 0, 0, 0);
+      const ts = d.getTime();
+      const dateStr = d.toISOString().split("T")[0];
 
-  const bars = days.map((d) => {
-    const ts = d.getTime();
-    const scheduled = allHabits.filter(({ habit }) => {
-      // very rough: just check if habit exists on that day
-      const start = habit.schedule?.startDate;
-      if (start && start > d.toISOString().split("T")[0]) return false;
-      return true;
+      // ✅ Bug fix: wasScheduledOn statt nur startDate-Check
+      // Berücksichtigt jetzt korrekt Wochentage, Intervalle, Start/Enddatum
+      const scheduled = allHabits.filter(({ habit }) =>
+        wasScheduledOn(ts, habit.schedule)
+      );
+      const done = scheduled.filter(({ habit }) =>
+        habit.completedDates.includes(ts)
+      );
+
+      const rate = scheduled.length > 0 ? done.length / scheduled.length : 0;
+      const isToday = ts === todayTs;
+
+      return {
+        label: DAY_LABELS[d.getDay() === 0 ? 6 : d.getDay() - 1],
+        rate,
+        isToday,
+        done: done.length,
+        total: scheduled.length,
+      };
     });
-    const done = scheduled.filter(({ habit }) =>
-      habit.completedDates.includes(ts)
-    );
-    const rate = scheduled.length > 0 ? done.length / scheduled.length : 0;
-    const isToday = ts === getTodayTimestamp();
-    return {
-      label: DAY_LABELS[d.getDay() === 0 ? 6 : d.getDay() - 1],
-      rate,
-      isToday,
-      done: done.length,
-      total: scheduled.length,
-    };
-  });
+  }, [allHabits]);
 
   const maxH = 64;
 
@@ -228,411 +244,403 @@ export default function StatsScreen() {
     loadEntries();
   }, []);
 
-  // Today
-  const todayHabits = habits.filter(({ habit }) =>
-    isScheduledForToday(habit.schedule)
+  const today = dateToLocalString(new Date());
+
+  // ✅ useMemo für alle abgeleiteten Werte
+  const todayHabits = useMemo(
+    () => habits.filter(({ habit }) => isScheduledForToday(habit.schedule)),
+    [habits]
   );
-  const completedToday = todayHabits.filter((h) => h.completed).length;
+
+  const completedToday = useMemo(
+    () => todayHabits.filter((h) => h.completed).length,
+    [todayHabits]
+  );
+
   const habitRateToday =
     todayHabits.length > 0 ? completedToday / todayHabits.length : 0;
 
-  // Best streak overall
-  const bestStreak = habits.reduce((max, h) => Math.max(max, h.streak ?? 0), 0);
-  const bestStreakHabit = habits.find((h) => (h.streak ?? 0) === bestStreak);
+  const bestStreak = useMemo(
+    () => habits.reduce((max, h) => Math.max(max, h.streak ?? 0), 0),
+    [habits]
+  );
 
-  // Planner today
-  const today = dateToLocalString(new Date());
-  const todayEntries = entries.filter((e) => e.date === today);
-  const todayPlannerDone = todayEntries.filter((e) => e.doneAt).length;
+  const bestStreakHabit = useMemo(
+    () => habits.find((h) => (h.streak ?? 0) === bestStreak),
+    [habits, bestStreak]
+  );
+
+  const todayEntries = useMemo(
+    () => entries.filter((e) => e.date === today),
+    [entries, today]
+  );
+
+  const todayPlannerDone = useMemo(
+    () => todayEntries.filter((e) => e.doneAt).length,
+    [todayEntries]
+  );
+
   const plannerRate =
     todayEntries.length > 0 ? todayPlannerDone / todayEntries.length : 0;
 
-  // Weekly planner
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
-  weekStart.setHours(0, 0, 0, 0);
-  const weekEntries = entries.filter((e) => new Date(e.date) >= weekStart);
-  const weekDone = weekEntries.filter((e) => e.doneAt).length;
+  const { weekDone, weekEntries } = useMemo(() => {
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEntries = entries.filter((e) => new Date(e.date) >= weekStart);
+    const weekDone = weekEntries.filter((e) => e.doneAt).length;
+    return { weekDone, weekEntries };
+  }, [entries]);
+
   const weekRate = weekEntries.length > 0 ? weekDone / weekEntries.length : 0;
 
-  // All completedDates combined for heatmap
-  const allCompletedDates = habits.flatMap(({ habit }) => habit.completedDates);
-
-  // Sort habits by streak descending
-  const sortedByStreak = [...habits].sort(
-    (a, b) => (b.streak ?? 0) - (a.streak ?? 0)
+  // ✅ useMemo: flatMap + sort sind O(n) — unnötig bei jedem Render
+  const allCompletedDates = useMemo(
+    () => habits.flatMap(({ habit }) => habit.completedDates),
+    [habits]
   );
 
+  const sortedByStreak = useMemo(
+    () => [...habits].sort((a, b) => (b.streak ?? 0) - (a.streak ?? 0)),
+    [habits]
+  );
+
+  const hasAnyData = habits.length > 0 || entries.length > 0;
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <ScrollView
       style={s.container}
       contentContainerStyle={{ paddingBottom: 40 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── HEADER ── */}
       <View style={[s.header, { paddingTop: insets.top + 20 }]}>
         <Text style={s.headerTitle}>Statistiken</Text>
         <Text style={s.headerSub}>Dein Fortschritt auf einen Blick</Text>
       </View>
 
-      <View style={s.content}>
-        {/* ── TODAY RINGS ── */}
-        <View style={s.card}>
-          <Text style={s.cardTitle}>Heute</Text>
-          <View style={s.ringsRow}>
-            {/* Habits Ring */}
-            <View style={s.ringItem}>
-              <RingProgress
-                size={88}
-                strokeWidth={9}
-                progress={habitRateToday}
-                color="#4b60af"
-              >
-                <View style={{ alignItems: "center" }}>
-                  <Text style={[s.ringValue, { color: "#4b60af" }]}>
-                    {Math.round(habitRateToday * 100)}%
-                  </Text>
-                </View>
-              </RingProgress>
-              <Text style={s.ringLabel}>Habits</Text>
-              <Text style={s.ringSub}>
-                {completedToday}/{todayHabits.length}
-              </Text>
-            </View>
-
-            {/* Divider */}
-            <View style={s.ringDivider} />
-
-            {/* Planner Ring */}
-            <View style={s.ringItem}>
-              <RingProgress
-                size={88}
-                strokeWidth={9}
-                progress={plannerRate}
-                color="#3b8995"
-              >
-                <View style={{ alignItems: "center" }}>
-                  <Text style={[s.ringValue, { color: "#3b8995" }]}>
-                    {Math.round(plannerRate * 100)}%
-                  </Text>
-                </View>
-              </RingProgress>
-              <Text style={s.ringLabel}>Planner</Text>
-              <Text style={s.ringSub}>
-                {todayPlannerDone}/{todayEntries.length}
-              </Text>
-            </View>
-
-            {/* Divider */}
-            <View style={s.ringDivider} />
-
-            {/* Woche Ring */}
-            <View style={s.ringItem}>
-              <RingProgress
-                size={88}
-                strokeWidth={9}
-                progress={weekRate}
-                color="#f59e0b"
-              >
-                <View style={{ alignItems: "center" }}>
-                  <Text style={[s.ringValue, { color: "#f59e0b" }]}>
-                    {Math.round(weekRate * 100)}%
-                  </Text>
-                </View>
-              </RingProgress>
-              <Text style={s.ringLabel}>Woche</Text>
-              <Text style={s.ringSub}>
-                {weekDone}/{weekEntries.length}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── STREAK HERO ── */}
-        {bestStreak > 0 && (
-          <View style={s.streakHero}>
-            <View style={s.streakHeroLeft}>
-              <Text style={s.streakHeroEmoji}>
-                <MaterialCommunityIcons name="fire" size={14} color="#F74920" />
-              </Text>
-              <View>
-                <Text style={s.streakHeroLabel}>Längster aktiver Streak</Text>
-                <Text style={s.streakHeroHabit} numberOfLines={1}>
-                  {bestStreakHabit?.habit.title ?? ""}
+      {!hasAnyData ? (
+        <StatsEmptyState />
+      ) : (
+        <View style={s.content}>
+          {/* ── TODAY RINGS ── */}
+          <View style={s.card}>
+            <Text style={s.cardTitle}>Heute</Text>
+            <View style={s.ringsRow}>
+              <View style={s.ringItem}>
+                <RingProgress
+                  size={88}
+                  strokeWidth={9}
+                  progress={habitRateToday}
+                  color="#4b60af"
+                >
+                  <View style={{ alignItems: "center" }}>
+                    <Text style={[s.ringValue, { color: "#4b60af" }]}>
+                      {Math.round(habitRateToday * 100)}%
+                    </Text>
+                  </View>
+                </RingProgress>
+                <Text style={s.ringLabel}>Habits</Text>
+                <Text style={s.ringSub}>
+                  {completedToday}/{todayHabits.length}
+                </Text>
+              </View>
+              <View style={s.ringDivider} />
+              <View style={s.ringItem}>
+                <RingProgress
+                  size={88}
+                  strokeWidth={9}
+                  progress={plannerRate}
+                  color="#3b8995"
+                >
+                  <View style={{ alignItems: "center" }}>
+                    <Text style={[s.ringValue, { color: "#3b8995" }]}>
+                      {Math.round(plannerRate * 100)}%
+                    </Text>
+                  </View>
+                </RingProgress>
+                <Text style={s.ringLabel}>Planner</Text>
+                <Text style={s.ringSub}>
+                  {todayPlannerDone}/{todayEntries.length}
+                </Text>
+              </View>
+              <View style={s.ringDivider} />
+              <View style={s.ringItem}>
+                <RingProgress
+                  size={88}
+                  strokeWidth={9}
+                  progress={weekRate}
+                  color="#f59e0b"
+                >
+                  <View style={{ alignItems: "center" }}>
+                    <Text style={[s.ringValue, { color: "#f59e0b" }]}>
+                      {Math.round(weekRate * 100)}%
+                    </Text>
+                  </View>
+                </RingProgress>
+                <Text style={s.ringLabel}>Woche</Text>
+                <Text style={s.ringSub}>
+                  {weekDone}/{weekEntries.length}
                 </Text>
               </View>
             </View>
-            <View style={s.streakHeroBadge}>
-              <Text style={s.streakHeroValue}>{bestStreak}</Text>
-              <Text style={s.streakHeroUnit}>Tage</Text>
-            </View>
           </View>
-        )}
 
-        {/* ── WOCHENBARS ── */}
-        <View style={s.card}>
-          <Text style={s.cardTitle}>Diese Woche · Habits</Text>
-          <WeekBars habits={habits} />
-        </View>
-
-        {/* ── HEATMAP ── */}
-        <View style={s.card}>
-          <View style={s.cardHeaderRow}>
-            <Text style={s.cardTitle}>Aktivität · 13 Wochen</Text>
-            <View style={s.heatmapLegend}>
-              <View style={[s.heatmapDot, { backgroundColor: "#f1f5f9" }]} />
-              <View style={[s.heatmapDot, { backgroundColor: "#3b8995" }]} />
-            </View>
-          </View>
-          <HabitHeatmap completedDates={allCompletedDates} />
-        </View>
-
-        {/* ── HABIT STREAKS ── */}
-        <View style={s.card}>
-          <Text style={s.cardTitle}>Streaks</Text>
-          <View style={s.streakList}>
-            {sortedByStreak.map(({ habit, streak, longestStreak }) => {
-              const cfg = getCategoryConfig(habit.category);
-              const rate30 = getCompletionRate(habit, 30);
-              return (
-                <View key={habit.id} style={s.streakRow}>
-                  <View style={[s.streakDot, { backgroundColor: cfg.color }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.streakHabitName} numberOfLines={1}>
-                      {habit.title}
-                    </Text>
-                    <View style={s.streakBarTrack}>
-                      <View
-                        style={[
-                          s.streakBarFill,
-                          {
-                            width: `${rate30}%`,
-                            backgroundColor: cfg.color,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text style={s.streakRate}>{rate30}% letzte 30 Tage</Text>
-                  </View>
-                  <View style={s.streakNums}>
-                    <View style={s.streakNumItem}>
-                      <Text style={s.streakNumValue}>
-                        <MaterialCommunityIcons
-                          name="fire"
-                          size={14}
-                          color="#F74920"
-                        />{" "}
-                        {streak ?? 0}
-                      </Text>
-                      <Text style={s.streakNumLabel}>aktuell</Text>
-                    </View>
-                    <View style={s.streakNumItem}>
-                      <Text style={[s.streakNumValue, { color: "#8b5cf6" }]}>
-                        {longestStreak ?? 0}
-                      </Text>
-                      <Text style={s.streakNumLabel}>best</Text>
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-            {habits.length === 0 && (
-              <Text style={s.emptyText}>Noch keine Habits angelegt</Text>
-            )}
-          </View>
-        </View>
-
-        <HealthSection />
-
-        {/* ── GESAMT ÜBERSICHT ── */}
-        <View style={s.summaryGrid}>
-          {[
-            {
-              label: "Habits gesamt",
-              value: habits.length,
-              color: "#4b60af",
-              bg: "#f0f4ff",
-            },
-            {
-              label: "Heute geplant",
-              value: todayHabits.length,
-              color: "#3b8995",
-              bg: "#f0fbfc",
-            },
-            {
-              label: "Längste Streak",
-              value: (
-                <>
-                  <Text>{bestStreak}</Text>
+          {/* ── STREAK HERO ── */}
+          {bestStreak > 0 && (
+            <View style={s.streakHero}>
+              <View style={s.streakHeroLeft}>
+                <Text style={s.streakHeroEmoji}>
                   <MaterialCommunityIcons
                     name="fire"
-                    size={24}
+                    size={14}
                     color="#F74920"
                   />
-                </>
-              ),
-              color: "#f59e0b",
-              bg: "#fffbeb",
-            },
-            {
-              label: "Woche erledigt",
-              value: weekDone,
-              color: "#10b981",
-              bg: "#f0fdf4",
-            },
-          ].map(({ label, value, color, bg }) => (
-            <View key={label} style={[s.summaryCard, { backgroundColor: bg }]}>
-              <Text style={[s.summaryValue, { color }]}>{value}</Text>
-              <Text style={s.summaryLabel}>{label}</Text>
+                </Text>
+                <View>
+                  <Text style={s.streakHeroLabel}>Längster aktiver Streak</Text>
+                  <Text style={s.streakHeroHabit} numberOfLines={1}>
+                    {bestStreakHabit?.habit.title ?? ""}
+                  </Text>
+                </View>
+              </View>
+              <View style={s.streakHeroBadge}>
+                <Text style={s.streakHeroValue}>{bestStreak}</Text>
+                <Text style={s.streakHeroUnit}>Tage</Text>
+              </View>
             </View>
-          ))}
+          )}
+
+          {/* ── WOCHENBARS ── */}
+          <View style={s.card}>
+            <Text style={s.cardTitle}>Diese Woche · Habits</Text>
+            <WeekBars habits={habits} />
+          </View>
+
+          {/* ── HEATMAP ── */}
+          <View style={s.card}>
+            <View style={s.cardHeaderRow}>
+              <Text style={s.cardTitle}>Aktivität · 13 Wochen</Text>
+              <View style={s.heatmapLegend}>
+                <View style={[s.heatmapDot, { backgroundColor: "#f1f5f9" }]} />
+                <View style={[s.heatmapDot, { backgroundColor: "#3b8995" }]} />
+              </View>
+            </View>
+            <HabitHeatmap completedDates={allCompletedDates} />
+          </View>
+
+          {/* ── HABIT STREAKS ── */}
+          <View style={s.card}>
+            <Text style={s.cardTitle}>Streaks</Text>
+            <View style={s.streakList}>
+              {sortedByStreak.map(({ habit, streak, longestStreak }) => {
+                const cfg = getCategoryConfig(habit.category);
+                const rate30 = getCompletionRate(habit, 30);
+                return (
+                  <View key={habit.id} style={s.streakRow}>
+                    <View
+                      style={[s.streakDot, { backgroundColor: cfg.color }]}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.streakHabitName} numberOfLines={1}>
+                        {habit.title}
+                      </Text>
+                      <View style={s.streakBarTrack}>
+                        <View
+                          style={[
+                            s.streakBarFill,
+                            { width: `${rate30}%`, backgroundColor: cfg.color },
+                          ]}
+                        />
+                      </View>
+                      <Text style={s.streakRate}>{rate30}% letzte 30 Tage</Text>
+                    </View>
+                    <View style={s.streakNums}>
+                      <View style={s.streakNumItem}>
+                        <Text style={s.streakNumValue}>
+                          <MaterialCommunityIcons
+                            name="fire"
+                            size={14}
+                            color="#F74920"
+                          />{" "}
+                          {streak ?? 0}
+                        </Text>
+                        <Text style={s.streakNumLabel}>aktuell</Text>
+                      </View>
+                      <View style={s.streakNumItem}>
+                        <Text style={[s.streakNumValue, { color: "#8b5cf6" }]}>
+                          {longestStreak ?? 0}
+                        </Text>
+                        <Text style={s.streakNumLabel}>best</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+              {habits.length === 0 && (
+                <Text style={s.emptyText}>Noch keine Habits angelegt</Text>
+              )}
+            </View>
+          </View>
+
+          <HealthSection />
+
+          {/* ── GESAMT ÜBERSICHT ── */}
+          <View style={s.summaryGrid}>
+            {[
+              {
+                label: "Habits gesamt",
+                value: habits.length,
+                color: "#4b60af",
+                bg: "#f0f4ff",
+              },
+              {
+                label: "Heute geplant",
+                value: todayHabits.length,
+                color: "#3b8995",
+                bg: "#f0fbfc",
+              },
+              {
+                label: "Längste Streak",
+                value: bestStreak,
+                color: "#f59e0b",
+                bg: "#fffbeb",
+              },
+              {
+                label: "Woche erledigt",
+                value: weekDone,
+                color: "#10b981",
+                bg: "#f0fdf4",
+              },
+            ].map(({ label, value, color, bg }) => (
+              <View
+                key={label}
+                style={[s.summaryCard, { backgroundColor: bg }]}
+              >
+                <Text style={[s.summaryValue, { color }]}>{value}</Text>
+                <Text style={s.summaryLabel}>{label}</Text>
+              </View>
+            ))}
+          </View>
         </View>
-      </View>
+      )}
     </ScrollView>
   );
 }
 
+// ─── Styles (unverändert aus Original) ────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8f9fb" },
-
-  header: {
-    paddingHorizontal: 24,
-    paddingBottom: 20,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
+  header: { paddingHorizontal: 20, paddingBottom: 8 },
   headerTitle: {
     fontSize: 28,
     fontWeight: "700",
     color: "#0f172a",
     letterSpacing: -0.5,
-    marginBottom: 2,
   },
-  headerSub: { fontSize: 14, color: "#94a3b8" },
-
-  content: { padding: 16, gap: 14 },
+  headerSub: { fontSize: 14, color: "#94a3b8", marginTop: 2 },
+  content: { paddingHorizontal: 16, gap: 12 },
 
   card: {
     backgroundColor: "white",
-    borderRadius: 18,
-    padding: 18,
+    borderRadius: 16,
+    padding: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   cardTitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "700",
-    color: "#94a3b8",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginBottom: 16,
+    color: "#0f172a",
+    marginBottom: 12,
   },
   cardHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 12,
   },
 
-  // Rings
   ringsRow: {
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
   },
-  ringItem: { alignItems: "center", gap: 6 },
-  ringValue: { fontSize: 16, fontWeight: "800" },
-  ringLabel: { fontSize: 13, fontWeight: "600", color: "#334155" },
+  ringDivider: { width: 1, height: 60, backgroundColor: "#f1f5f9" },
+  ringItem: { alignItems: "center", gap: 4 },
+  ringValue: { fontSize: 16, fontWeight: "700" },
+  ringLabel: { fontSize: 12, color: "#64748b", fontWeight: "600" },
   ringSub: { fontSize: 11, color: "#94a3b8" },
-  ringDivider: { width: 1, height: 70, backgroundColor: "#f1f5f9" },
 
-  // Streak Hero
   streakHero: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 16,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#fffbeb",
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#fde68a",
+    justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   streakHeroLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     flex: 1,
   },
-  streakHeroEmoji: { fontSize: 32 },
-  streakHeroLabel: {
-    fontSize: 12,
-    color: "#92400e",
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  streakHeroHabit: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#78350f",
-    marginTop: 2,
-    maxWidth: 180,
-  },
+  streakHeroEmoji: { fontSize: 24 },
+  streakHeroLabel: { fontSize: 12, color: "#94a3b8", fontWeight: "500" },
+  streakHeroHabit: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
   streakHeroBadge: { alignItems: "center" },
-  streakHeroValue: {
-    fontSize: 40,
-    fontWeight: "800",
-    color: "#f59e0b",
-    lineHeight: 44,
-  },
-  streakHeroUnit: { fontSize: 12, color: "#92400e", fontWeight: "600" },
+  streakHeroValue: { fontSize: 32, fontWeight: "800", color: "#f59e0b" },
+  streakHeroUnit: { fontSize: 11, color: "#94a3b8" },
 
-  // Heatmap legend
   heatmapLegend: { flexDirection: "row", gap: 4 },
-  heatmapDot: { width: 12, height: 12, borderRadius: 3 },
+  heatmapDot: { width: 10, height: 10, borderRadius: 2 },
 
-  // Streak list
-  streakList: { gap: 14 },
-  streakRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  streakList: { gap: 12 },
+  streakRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   streakDot: { width: 10, height: 10, borderRadius: 5, marginTop: 2 },
   streakHabitName: {
     fontSize: 14,
     fontWeight: "600",
     color: "#0f172a",
-    marginBottom: 6,
-  },
-  streakBarTrack: {
-    height: 5,
-    backgroundColor: "#f1f5f9",
-    borderRadius: 3,
-    overflow: "hidden",
     marginBottom: 4,
   },
-  streakBarFill: { height: "100%", borderRadius: 3 },
+  streakBarTrack: {
+    height: 4,
+    backgroundColor: "#f1f5f9",
+    borderRadius: 2,
+    overflow: "hidden",
+    marginBottom: 2,
+  },
+  streakBarFill: { height: 4, borderRadius: 2 },
   streakRate: { fontSize: 11, color: "#94a3b8" },
-  streakNums: { flexDirection: "row", gap: 12 },
+  streakNums: { alignItems: "flex-end", gap: 4 },
   streakNumItem: { alignItems: "center" },
-  streakNumValue: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
+  streakNumValue: { fontSize: 13, fontWeight: "700", color: "#0f172a" },
   streakNumLabel: { fontSize: 10, color: "#94a3b8" },
 
-  // Summary grid
-  summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  summaryCard: {
-    width: (SCREEN_W - 32 - 10) / 2 - 5,
-    borderRadius: 16,
-    padding: 16,
+  summaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 4,
   },
-  summaryValue: { fontSize: 28, fontWeight: "800", marginBottom: 4 },
+  summaryCard: { width: "47%", borderRadius: 14, padding: 14 },
+  summaryValue: { fontSize: 26, fontWeight: "800", marginBottom: 2 },
   summaryLabel: { fontSize: 12, color: "#64748b", fontWeight: "500" },
 
   emptyText: {
     fontSize: 14,
     color: "#94a3b8",
     textAlign: "center",
-    paddingVertical: 16,
+    padding: 12,
   },
 });

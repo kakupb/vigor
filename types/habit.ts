@@ -49,8 +49,8 @@ export type Habit = {
   completedDates: number[]; // Timestamps (Tagesbeginn) der Erledigungen
   completedAmounts?: Record<number, number>;
   category?: PlannerCategory;
-  frequency?: HabitFrequency; // neu – optional für Rückwärtskompatibilität
-  schedule?: HabitSchedule;
+  frequency?: HabitFrequency;
+  schedule?: HabitSchedule; // Zeitplan — einzige Scheduling-Quelle
 };
 
 // ─────────────────────────────────────────────
@@ -129,13 +129,23 @@ export type HabitSchedule = {
   startDate?: string; // ISO date string "2025-03-01"
   endDate?: string; // ISO date string, optional
   repeatUnit?: RepeatUnit;
-  weekDays?: number[];
+  weekDays?: number[]; // 0=So, 1=Mo, …, 6=Sa — nur relevant bei repeatUnit="week"
   repeatEvery?: number; // alle N Tage/Wochen/Monate/Jahre
 };
 
 export function scheduleLabel(s?: HabitSchedule): string {
   if (!s?.repeatUnit) return "Täglich";
   const every = s.repeatEvery ?? 1;
+
+  if (s.repeatUnit === "week" && s.weekDays && s.weekDays.length > 0) {
+    const WEEKDAY_SHORT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    return s.weekDays
+      .slice()
+      .sort((a, b) => a - b)
+      .map((d) => WEEKDAY_SHORT[d])
+      .join(", ");
+  }
+
   const unitLabel: Record<RepeatUnit, [string, string]> = {
     day: ["Tag", "Tage"],
     week: ["Woche", "Wochen"],

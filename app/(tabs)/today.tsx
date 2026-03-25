@@ -8,6 +8,7 @@ import { TodayEmptyState } from "@/components/today/TodayEmptyState";
 import { TodayStatsCard } from "@/components/today/TodayStatsCard";
 import { THEME } from "@/constants/theme";
 import { usePlannerDay } from "@/hooks/planner/usePlanner";
+import { useAppColors } from "@/hooks/useAppColors";
 import { useHabits } from "@/hooks/useHabits";
 import { useUserStore } from "@/store/userStore";
 import { dateToLocalString } from "@/utils/dateUtils";
@@ -32,7 +33,7 @@ export default function TodayScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
 
   const { name, hasOnboarded, loadUser } = useUserStore();
-
+  const c = useAppColors();
   // useEffect(() => {
   //   loadUser();
   // }, []);
@@ -47,7 +48,7 @@ export default function TodayScreen() {
 
   if (habitsLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: c.pageBg }]}>
         <ActivityIndicator size="large" color={THEME.colors.primary} />
       </View>
     );
@@ -106,7 +107,13 @@ export default function TodayScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: c.pageBg },
+        { paddingTop: insets.top },
+      ]}
+    >
       {/* ── Onboarding ── */}
       <OnboardingModal visible={!hasOnboarded} />
 
@@ -115,16 +122,26 @@ export default function TodayScreen() {
 
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* ── HEADER ── */}
-        <View style={styles.header}>
+        <View
+          style={[
+            styles.header,
+            { backgroundColor: c.headerBg, borderBottomColor: c.borderSubtle },
+          ]}
+        >
           <View style={styles.headerLeft}>
-            <Text style={styles.greeting} numberOfLines={1}>
+            <Text
+              style={[styles.greeting, { color: c.textPrimary }]}
+              numberOfLines={1}
+            >
               {greeting}
             </Text>
-            <Text style={styles.dateLabel}>{dateLabel}</Text>
+            <Text style={[styles.dateLabel, { color: c.textSecondary }]}>
+              {dateLabel}
+            </Text>
           </View>
           <Pressable
             onPress={() => setMenuVisible(true)}
-            style={styles.menuBtn}
+            style={[styles.menuBtn, { backgroundColor: c.menuBtnBg }]}
             hitSlop={8}
           >
             <Ionicons name="ellipsis-horizontal" size={18} color="#475569" />
@@ -165,7 +182,9 @@ export default function TodayScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View>
-                <Text style={styles.sectionTitle}>Habits heute</Text>
+                <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>
+                  Habits heute
+                </Text>
                 {habitsTotalToday > 0 && (
                   <Text style={styles.sectionSubtitle}>
                     {habitsCompletedToday} von {habitsTotalToday} erledigt
@@ -174,9 +193,25 @@ export default function TodayScreen() {
               </View>
               <Pressable
                 onPress={() => router.push("/add")}
-                style={styles.addButton}
+                style={[
+                  styles.addButton,
+                  {
+                    backgroundColor: c.addButtonBg,
+                    borderColor: c.borderMuted,
+                  },
+                ]}
               >
-                <Text style={styles.addButtonText}>+ Habit</Text>
+                <Text
+                  style={[
+                    styles.addButton,
+                    {
+                      backgroundColor: c.addButtonBg,
+                      borderColor: c.borderMuted,
+                    },
+                  ]}
+                >
+                  + Habit
+                </Text>
               </Pressable>
             </View>
 
@@ -189,7 +224,12 @@ export default function TodayScreen() {
                 onPress={() => router.push("/add")}
               />
             ) : todayHabits.length === 0 ? (
-              <View style={styles.emptyToday}>
+              <View
+                style={[
+                  styles.emptyToday,
+                  { backgroundColor: c.cardBg, borderColor: c.borderDefault },
+                ]}
+              >
                 <Text style={styles.emptyTodayText}>
                   Heute keine Habits geplant
                 </Text>
@@ -202,7 +242,13 @@ export default function TodayScreen() {
 
             {otherHabits.length > 0 && (
               <View style={[styles.section, { marginTop: 20 }]}>
-                <Text style={[styles.sectionTitle, styles.sectionTitleMuted]}>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    { color: c.textPrimary },
+                    styles.sectionTitleMuted,
+                  ]}
+                >
                   Weitere Habits
                 </Text>
                 <View style={[styles.habitsList, styles.habitsListMuted]}>
@@ -216,7 +262,15 @@ export default function TodayScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View>
-                <Text style={styles.sectionTitle}>Heute geplant</Text>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    { color: c.textPrimary },
+                    { color: c.textPrimary },
+                  ]}
+                >
+                  Heute geplant
+                </Text>
                 {stats.total > 0 && (
                   <Text style={styles.sectionSubtitle}>
                     {stats.completed} von {stats.total} erledigt
@@ -230,9 +284,25 @@ export default function TodayScreen() {
                     params: { date: today },
                   })
                 }
-                style={styles.addButton}
+                style={[
+                  styles.addButton,
+                  {
+                    backgroundColor: c.addButtonBg,
+                    borderColor: c.borderMuted,
+                  },
+                ]}
               >
-                <Text style={styles.addButtonText}>+ Eintrag</Text>
+                <Text
+                  style={[
+                    styles.addButton,
+                    {
+                      backgroundColor: c.addButtonBg,
+                      borderColor: c.borderMuted,
+                    },
+                  ]}
+                >
+                  + Eintrag
+                </Text>
               </Pressable>
             </View>
 
@@ -273,7 +343,10 @@ export default function TodayScreen() {
             {(entries.timed.length > 0 || entries.anytime.length > 0) && (
               <Pressable
                 onPress={() => router.push("/(tabs)/planner")}
-                style={styles.plannerLink}
+                style={[
+                  styles.plannerLink,
+                  { backgroundColor: c.cardBg, borderColor: c.borderMuted },
+                ]}
               >
                 <Text style={styles.plannerLinkText}>Zum Planner</Text>
                 <Ionicons name="arrow-forward" size={14} color="#3b8995" />

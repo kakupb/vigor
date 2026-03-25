@@ -3,6 +3,7 @@
 // Offline-first: lokale Änderungen sofort, Supabase im Hintergrund.
 import { sanitizeCategory } from "@/constants/categories";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUser, syncUpsert } from "@/lib/sync";
 import * as habitService from "@/services/habitService";
 import { storage } from "@/services/storage";
 import { Habit, HabitKind, HabitSchedule } from "@/types/habit";
@@ -11,32 +12,49 @@ import { getTodayTimestamp } from "@/utils/dateUtils";
 import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 
-// ─── Supabase Sync ────────────────────────────────────────────────────────────
-// Schreibt im Hintergrund — wirft keinen Fehler in die UI
-async function syncHabitsToSupabase(habits: Habit[]) {
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+// ─── Mapping: Habit → Supabase row ───────────────────────────────────────────
+async function toRow(h: Habit) {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  return {
+    id: h.id,
+    user_id: user.id,
+    title: h.title,
+    kind: h.kind,
+    category: h.category ?? null,
+    unit: h.unit ?? null,
+    daily_target: h.dailyTarget ?? null,
+    schedule: h.schedule ?? null,
+    completed_dates: h.completedDates,
+    completed_amounts: h.completedAmounts ?? {},
+  };
+}
 
-    const rows = habits.map((h) => ({
-      id: h.id,
-      user_id: user.id,
-      title: h.title,
-      kind: h.kind,
-      category: h.category ?? null,
-      unit: h.unit ?? null,
-      daily_target: h.dailyTarget ?? null,
-      schedule: h.schedule ?? null,
-      completed_dates: h.completedDates,
-      completed_amounts: h.completedAmounts ?? {},
-    }));
+// ─── Mapping: Supabase row → Habit ───────────────────────────────────────────
+function fromRow(r: any): Habit {
+  return {
+    id: r.id,
+    title: r.title,
+    kind: r.kind ?? "boolean",
+    category: sanitizeCategory(r.category),
+    unit: r.unit ?? undefined,
+    dailyTarget: r.daily_target ?? undefined,
+    schedule: r.schedule ?? undefined,
+    completedDates: r.completed_dates ?? [],
+    completedAmounts: r.completed_amounts ?? {},
+    createdAt: new Date(r.created_at).getTime(),
+  };
+}
 
-    await supabase.from("habits").upsert(rows, { onConflict: "id" });
-  } catch {
-    // Offline oder nicht eingeloggt — kein Problem, lokal ist gespeichert
-  }
+// ─── Lokale + Cloud-Persistenz ────────────────────────────────────────────────
+function saveLocal(habits: Habit[]) {
+  storage.habits.save(habits);
+}
+
+async function saveAndSync(habits: Habit[], changed: Habit) {
+  saveLocal(habits);
+  const row = await toRow(changed);
+  if (row) syncUpsert("habits", row);
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -61,11 +79,6 @@ type HabitState = {
   loadHabits: () => Promise<void>;
 };
 
-function save(habits: Habit[]) {
-  storage.habits.save(habits);
-  syncHabitsToSupabase(habits);
-}
-
 export const useHabitStore = create<HabitState>((set, get) => ({
   habits: [],
 
@@ -84,7 +97,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     };
     const updated = [...get().habits, newHabit];
     set({ habits: updated });
-    save(updated);
+    saveAndSync(updated, newHabit);
   },
 
   updateHabit: (habitId, updates) => {
@@ -92,14 +105,14 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       h.id === habitId ? { ...h, ...updates } : h
     );
     set({ habits: updated });
-    save(updated);
+    const changed = updated.find((h) => h.id === habitId);
+    if (changed) saveAndSync(updated, changed);
   },
 
   deleteHabit: (habitId) => {
     const updated = get().habits.filter((h) => h.id !== habitId);
     set({ habits: updated });
-    save(updated);
-
+    saveLocal(updated);
     // Aus Supabase löschen
     supabase.auth
       .getUser()
@@ -123,7 +136,8 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       return habitService.incrementCountHabit(habit, 1, timestamp);
     });
     set({ habits: updated });
-    save(updated);
+    const changed = updated.find((h) => h.id === habitId);
+    if (changed) saveAndSync(updated, changed);
   },
 
   increaseAmount: (habitId, increment) => {
@@ -133,7 +147,8 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       return habitService.incrementCountHabit(habit, increment, timestamp);
     });
     set({ habits: updated });
-    save(updated);
+    const changed = updated.find((h) => h.id === habitId);
+    if (changed) saveAndSync(updated, changed);
   },
 
   setAmountForToday: (habitId, value) => {
@@ -143,7 +158,8 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       return habitService.setCountAmount(habit, value, timestamp);
     });
     set({ habits: updated });
-    save(updated);
+    const changed = updated.find((h) => h.id === habitId);
+    if (changed) saveAndSync(updated, changed);
   },
 
   loadHabits: async () => {
@@ -152,9 +168,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
     // 2. Aus Supabase laden falls eingeloggt
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getCurrentUser();
       if (user) {
         const { data } = await supabase
           .from("habits")
@@ -162,18 +176,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
           .eq("user_id", user.id);
 
         if (data && data.length > 0) {
-          const fromCloud: Habit[] = data.map((r) => ({
-            id: r.id,
-            title: r.title,
-            kind: r.kind ?? "boolean",
-            category: sanitizeCategory(r.category),
-            unit: r.unit ?? undefined,
-            dailyTarget: r.daily_target ?? undefined,
-            schedule: r.schedule ?? undefined,
-            completedDates: r.completed_dates ?? [],
-            completedAmounts: r.completed_amounts ?? {},
-            createdAt: new Date(r.created_at).getTime(),
-          }));
+          const fromCloud = data.map(fromRow);
           set({ habits: fromCloud });
           storage.habits.save(fromCloud);
           return;

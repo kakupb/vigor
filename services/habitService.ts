@@ -1,6 +1,7 @@
 // services/habitService.ts
 import { Habit, isScheduledToday } from "@/types/habit";
 import { getTodayTimestamp } from "@/utils/dateUtils";
+import { isScheduledForToday as scheduleCheck } from "@/utils/scheduleUtils";
 
 /** Prüft ob ein Habit heute erledigt ist */
 export function isCompletedToday(
@@ -21,7 +22,7 @@ export function getTodayAmount(
 
 /** Ist heute ein geplanter Tag? */
 export function isScheduledForToday(habit: Habit): boolean {
-  return isScheduledToday(habit.frequency, habit.createdAt);
+  return scheduleCheck(habit.schedule);
 }
 
 /** Berechnet ob das Daily Target erreicht wurde */

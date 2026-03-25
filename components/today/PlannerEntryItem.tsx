@@ -1,5 +1,6 @@
 // components/today/PlannerEntryItem.tsx
 import { getCategoryConfig } from "@/constants/categories";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { PlannerEntry } from "@/types/planner";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -14,56 +15,90 @@ export function PlannerEntryItem({
   onPress,
   onLongPress,
 }: PlannerEntryItemProps) {
+  const dark = useColorScheme() === "dark";
   const isDone = !!entry.doneAt;
   const categoryConfig = getCategoryConfig(entry.category);
+  const isAnytime = !entry.startTime;
 
   const timeLabel = entry.startTime
     ? `${entry.startTime}${entry.endTime ? ` – ${entry.endTime}` : ""}`
     : "Anytime";
 
-  const isAnytime = !entry.startTime;
+  const d = dark; // shorthand
 
   return (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       style={({ pressed }) => [
-        styles.container,
-        isDone && styles.containerDone,
-        pressed && styles.containerPressed,
+        s.container,
+        {
+          backgroundColor: isDone
+            ? d
+              ? "#0d2e1e"
+              : "#f0fdf8"
+            : d
+            ? "#1e293b"
+            : "#ffffff",
+          borderColor: isDone
+            ? d
+              ? "#166534"
+              : "#bbf7d0"
+            : d
+            ? "#334155"
+            : "#eef0f4",
+        },
+        pressed && s.pressed,
       ]}
     >
       {/* Category color bar */}
       <View
         style={[
-          styles.colorBar,
-          {
-            backgroundColor: isDone ? "#10b981" : categoryConfig.color,
-          },
+          s.colorBar,
+          { backgroundColor: isDone ? "#10b981" : categoryConfig.color },
         ]}
       />
 
       {/* Checkbox */}
-      <View style={[styles.checkbox, isDone && styles.checkboxDone]}>
-        {isDone && <Text style={styles.checkmark}>✓</Text>}
+      <View
+        style={[
+          s.checkbox,
+          isDone ? s.checkboxDone : { borderColor: d ? "#475569" : "#cbd5e1" },
+        ]}
+      >
+        {isDone && <Text style={s.checkmark}>✓</Text>}
       </View>
 
       {/* Content */}
-      <View style={styles.content}>
+      <View style={s.content}>
         <Text
-          style={[styles.title, isDone && styles.titleDone]}
+          style={[
+            s.title,
+            { color: isDone ? "#10b981" : d ? "#f1f5f9" : "#0f172a" },
+            isDone && s.titleDone,
+          ]}
           numberOfLines={1}
         >
           {entry.title}
         </Text>
 
-        <View style={styles.meta}>
+        <View style={s.meta}>
           {/* Time badge */}
           <View
-            style={[styles.timeBadge, isAnytime && styles.timeBadgeAnytime]}
+            style={[
+              s.timeBadge,
+              isAnytime
+                ? { backgroundColor: d ? "#451a03" : "#fef9c3" }
+                : { backgroundColor: d ? "#0f172a" : "#f1f5f9" },
+            ]}
           >
             <Text
-              style={[styles.timeText, isAnytime && styles.timeTextAnytime]}
+              style={[
+                s.timeText,
+                isAnytime
+                  ? { color: d ? "#fbbf24" : "#854d0e" }
+                  : { color: d ? "#94a3b8" : "#475569" },
+              ]}
             >
               {timeLabel}
             </Text>
@@ -71,9 +106,7 @@ export function PlannerEntryItem({
 
           {/* Category label */}
           {entry.category && (
-            <Text
-              style={[styles.categoryText, { color: categoryConfig.color }]}
-            >
+            <Text style={[s.categoryText, { color: categoryConfig.color }]}>
               {categoryConfig.label}
             </Text>
           )}
@@ -83,14 +116,12 @@ export function PlannerEntryItem({
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#ffffff",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#eef0f4",
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -98,85 +129,26 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  containerDone: {
-    backgroundColor: "#f0fdf8",
-    borderColor: "#bbf7d0",
-  },
-  containerPressed: {
-    opacity: 0.75,
-  },
-
-  // Left color bar
-  colorBar: {
-    width: 4,
-    alignSelf: "stretch",
-  },
-
-  // Checkbox
+  pressed: { opacity: 0.75 },
+  colorBar: { width: 4, alignSelf: "stretch" },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: "#cbd5e1",
     backgroundColor: "transparent",
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 12,
     marginRight: 12,
   },
-  checkboxDone: {
-    borderColor: "#10b981",
-    backgroundColor: "#10b981",
-  },
-  checkmark: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  // Content
-  content: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingRight: 14,
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#0f172a",
-    marginBottom: 4,
-  },
-  titleDone: {
-    color: "#10b981",
-    textDecorationLine: "line-through",
-  },
-
-  // Meta row
-  meta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  timeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: "#f1f5f9",
-    borderRadius: 6,
-  },
-  timeBadgeAnytime: {
-    backgroundColor: "#fef9c3",
-  },
-  timeText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#475569",
-  },
-  timeTextAnytime: {
-    color: "#854d0e",
-  },
-  categoryText: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
+  checkboxDone: { borderColor: "#10b981", backgroundColor: "#10b981" },
+  checkmark: { color: "white", fontSize: 12, fontWeight: "700" },
+  content: { flex: 1, paddingVertical: 12, paddingRight: 14 },
+  title: { fontSize: 15, fontWeight: "600", marginBottom: 4 },
+  titleDone: { textDecorationLine: "line-through" },
+  meta: { flexDirection: "row", alignItems: "center", gap: 8 },
+  timeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  timeText: { fontSize: 12, fontWeight: "500" },
+  categoryText: { fontSize: 12, fontWeight: "500" },
 });

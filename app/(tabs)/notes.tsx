@@ -1,5 +1,6 @@
 // app/(tabs)/notes.tsx
 import { TagChips } from "@/components/notes/TagChips";
+import { useAppColors } from "@/hooks/useAppColors";
 import { getAllTags, sortNotes } from "@/services/noteServices";
 import { useNoteStore } from "@/store/noteStore";
 import { dateToLocalString } from "@/utils/dateUtils";
@@ -28,7 +29,7 @@ export default function Notes() {
   );
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-
+  const c = useAppColors();
   const notes = useNoteStore((s) => s.notes);
   const loadNotes = useNoteStore((s) => s.loadNotes);
 
@@ -80,18 +81,26 @@ export default function Notes() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: c.pageBg }]}>
         <ActivityIndicator size="large" color="#3b8995" />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: c.pageBg }]}>
       {/* ── HEADER ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: c.headerBg, borderBottomColor: c.borderSubtle },
+          { paddingTop: insets.top + 12 },
+        ]}
+      >
         <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Notizen</Text>
+          <Text style={[styles.headerTitle, { color: c.textPrimary }]}>
+            Notizen
+          </Text>
           <Pressable
             style={styles.newButton}
             onPress={() =>
@@ -191,7 +200,7 @@ export default function Notes() {
 
         {/* ── NOTES LIST ── */}
         <View style={styles.notesList}>
-          <Text style={styles.listHeader}>
+          <Text style={[styles.listHeader, { color: c.textPrimary }]}>
             {isToday ? "Heute" : dateLabel}
             <Text style={styles.listCount}> · {filteredNotes.length}</Text>
           </Text>
@@ -233,7 +242,13 @@ export default function Notes() {
               >
                 {/* Pin indicator */}
                 {note.isPinned && (
-                  <View style={styles.pinBadge}>
+                  <View
+                    style={[
+                      styles.pinBadge,
+                      { backgroundColor: c.pinBadgeBg },
+                      { backgroundColor: c.pinBadgeBg },
+                    ]}
+                  >
                     <Ionicons name="pin" size={10} color="#3b8995" />
                   </View>
                 )}
@@ -241,11 +256,17 @@ export default function Notes() {
                 <View style={styles.noteCardInner}>
                   <View style={styles.noteCardLeft}>
                     {note.title ? (
-                      <Text style={styles.noteTitle} numberOfLines={1}>
+                      <Text
+                        style={[styles.noteTitle, { color: c.textPrimary }]}
+                        numberOfLines={1}
+                      >
                         {note.title}
                       </Text>
                     ) : null}
-                    <Text style={styles.noteContent} numberOfLines={2}>
+                    <Text
+                      style={[styles.noteContent, { color: c.textSecondary }]}
+                      numberOfLines={2}
+                    >
                       {truncateText(note.content, 120)}
                     </Text>
                     {note.tags.length > 0 && (
