@@ -1,7 +1,8 @@
 // app/add/index.tsx
 import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import { SchedulePicker } from "@/components/habits/SchedulePicker";
-import { getCategoryConfig, PLANNER_CATEGORIES } from "@/constants/categories";
+import { CategorySelector } from "@/components/planner/CategorySelector";
+import { getCategoryConfig } from "@/constants/categories";
 import { useHabitStore } from "@/store/habitStore";
 import { HabitSchedule, scheduleLabel } from "@/types/habit";
 import { PlannerCategory } from "@/types/planner";
@@ -31,7 +32,6 @@ export default function AddHabitScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const addHabit = useHabitStore((s) => s.addHabit);
-
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<PlannerCategory>("other");
   const [kind, setKind] = useState<"boolean" | "count">("boolean");
@@ -39,7 +39,6 @@ export default function AddHabitScreen() {
   const [dailyTarget, setDailyTarget] = useState("1");
   const [schedule, setSchedule] = useState<HabitSchedule>(DEFAULT_SCHEDULE);
   const [isSaving, setIsSaving] = useState(false);
-
   const cfg = getCategoryConfig(category);
 
   function handleSave() {
@@ -49,10 +48,7 @@ export default function AddHabitScreen() {
     }
     if (kind === "count") {
       if (!unit.trim()) {
-        Alert.alert(
-          "Einheit fehlt",
-          "Bitte gib eine Einheit ein (z.B. Seiten, Minuten)."
-        );
+        Alert.alert("Einheit fehlt", "Bitte gib eine Einheit ein.");
         return;
       }
       if (!dailyTarget || Number(dailyTarget) <= 0) {
@@ -60,7 +56,6 @@ export default function AddHabitScreen() {
         return;
       }
     }
-
     setIsSaving(true);
     addHabit(
       title.trim(),
@@ -78,7 +73,6 @@ export default function AddHabitScreen() {
       style={{ flex: 1, backgroundColor: "#f8f9fb" }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      {/* ── HEADER ── */}
       <View
         style={[
           s.header,
@@ -112,7 +106,6 @@ export default function AddHabitScreen() {
           </Pressable>
         </View>
       </View>
-
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[
@@ -123,24 +116,20 @@ export default function AddHabitScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* TITEL */}
         <View style={s.card}>
           <Text style={s.label}>Titel</Text>
           <TextInput
             value={title}
             onChangeText={setTitle}
-            placeholder="z.B. Buch lesen, Sport, Wasser trinken..."
-            placeholderTextColor="#cbd5e1"
-            style={s.titleInput}
-            maxLength={60}
+            placeholder="z.B. Täglich lesen, 10.000 Schritte..."
+            placeholderTextColor="#94a3b8"
+            style={s.input}
             autoFocus
           />
         </View>
-
-        {/* TYP */}
         <View style={s.card}>
-          <Text style={s.label}>Typ</Text>
-          <View style={s.row}>
+          <Text style={s.label}>Art</Text>
+          <View style={s.kindRow}>
             {(["boolean", "count"] as const).map((k) => (
               <Pressable
                 key={k}
@@ -153,46 +142,32 @@ export default function AddHabitScreen() {
                   },
                 ]}
               >
-                <Text style={[s.kindIcon, kind === k && { color: "white" }]}>
-                  {k === "boolean" ? "✓" : "123"}
-                </Text>
-                <Text style={[s.kindTitle, kind === k && { color: "white" }]}>
-                  {k === "boolean" ? "Abhaken" : "Menge"}
-                </Text>
-                <Text
-                  style={[
-                    s.kindSub,
-                    kind === k && { color: "rgba(255,255,255,0.75)" },
-                  ]}
-                >
-                  {k === "boolean" ? "Täglich erledigen" : "Ziel verfolgen"}
+                <Text style={[s.kindText, kind === k && { color: "white" }]}>
+                  {k === "boolean" ? "Ja / Nein" : "Zähler"}
                 </Text>
               </Pressable>
             ))}
           </View>
         </View>
-
-        {/* TAGESZIEL */}
         {kind === "count" && (
           <View style={s.card}>
-            <Text style={s.label}>Tagesziel</Text>
-            <View style={s.row}>
+            <View style={s.row2}>
               <View style={{ flex: 1 }}>
-                <Text style={s.sublabel}>Menge</Text>
+                <Text style={s.label}>Tagesziel</Text>
                 <TextInput
                   value={dailyTarget}
-                  onChangeText={(v) => setDailyTarget(v.replace(/[^0-9]/g, ""))}
-                  keyboardType="number-pad"
+                  onChangeText={setDailyTarget}
+                  keyboardType="numeric"
                   style={s.input}
-                  maxLength={5}
+                  placeholderTextColor="#cbd5e1"
                 />
               </View>
-              <View style={{ flex: 2 }}>
-                <Text style={s.sublabel}>Einheit</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>Einheit</Text>
                 <TextInput
                   value={unit}
                   onChangeText={setUnit}
-                  placeholder="z.B. Liter, Seiten..."
+                  placeholder="Seiten, Min..."
                   placeholderTextColor="#cbd5e1"
                   style={s.input}
                   maxLength={20}
@@ -201,8 +176,6 @@ export default function AddHabitScreen() {
             </View>
           </View>
         )}
-
-        {/* ZEITPLAN */}
         <View style={s.card}>
           <View style={s.cardHeaderRow}>
             <Text style={s.label}>Zeitplan</Text>
@@ -218,38 +191,14 @@ export default function AddHabitScreen() {
             accentColor={cfg.color}
           />
         </View>
-
-        {/* KATEGORIE */}
         <View style={s.card}>
           <Text style={s.label}>Kategorie</Text>
-          <View style={s.catGrid}>
-            {PLANNER_CATEGORIES.map((cat) => {
-              const c = getCategoryConfig(cat.id);
-              const sel = category === cat.id;
-              return (
-                <Pressable
-                  key={cat.id}
-                  onPress={() => setCategory(cat.id)}
-                  style={[
-                    s.chip,
-                    sel && { backgroundColor: c.color, borderColor: c.color },
-                  ]}
-                >
-                  <CategoryIcon
-                    category={cat.id}
-                    size={13}
-                    containerSize={26}
-                  />
-                  <Text style={[s.chipText, sel && { color: "white" }]}>
-                    {c.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <CategorySelector
+            selected={category}
+            onSelect={(cat) => setCategory(cat ?? "other")}
+            horizontal={false}
+          />
         </View>
-
-        {/* VORSCHAU */}
         <View style={[s.preview, { borderLeftColor: cfg.color }]}>
           <CategoryIcon category={category} size={18} containerSize={40} />
           <View style={{ flex: 1 }}>
@@ -267,7 +216,7 @@ export default function AddHabitScreen() {
           </View>
           <View style={[s.badge, { backgroundColor: cfg.lightColor }]}>
             <Text style={[s.badgeText, { color: cfg.color }]}>
-              {kind === "count" ? "Menge" : "Check"}
+              {kind === "count" ? "Zähler" : "Check"}
             </Text>
           </View>
         </View>
@@ -277,7 +226,7 @@ export default function AddHabitScreen() {
 }
 
 const s = StyleSheet.create({
-  header: { paddingHorizontal: 20, paddingBottom: 16 },
+  header: { paddingHorizontal: 16, paddingBottom: 16 },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -291,29 +240,22 @@ const s = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  closeBtnText: { fontSize: 15, color: "#0f172a", fontWeight: "600" },
-  headerCenter: { alignItems: "center", gap: 4 },
-  headerSub: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#64748b",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
+  closeBtnText: { fontSize: 15, color: "#475569", fontWeight: "600" },
+  headerCenter: { alignItems: "center", gap: 6 },
+  headerSub: { fontSize: 13, color: "#475569", fontWeight: "600" },
   saveBtn: {
     paddingVertical: 8,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     backgroundColor: "#3b8995",
     borderRadius: 20,
   },
-  saveBtnOff: { backgroundColor: "#cbd5e1" },
+  saveBtnOff: { backgroundColor: "#e2e8f0" },
   saveBtnText: { color: "white", fontWeight: "700", fontSize: 14 },
-
   content: { padding: 16, gap: 12 },
   card: {
     backgroundColor: "white",
     borderRadius: 16,
-    padding: 18,
+    padding: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -322,50 +264,16 @@ const s = StyleSheet.create({
   },
   cardHeaderRow: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#94a3b8",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+    alignItems: "center",
     marginBottom: 12,
   },
-  sublabel: {
-    fontSize: 12,
-    color: "#94a3b8",
+  label: {
+    fontSize: 13,
     fontWeight: "600",
-    marginBottom: 6,
+    color: "#64748b",
+    marginBottom: 10,
   },
-  freqBadge: { paddingVertical: 3, paddingHorizontal: 10, borderRadius: 12 },
-  freqBadgeText: { fontSize: 12, fontWeight: "600" },
-
-  titleInput: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#0f172a",
-    padding: 0,
-    borderBottomWidth: 2,
-    borderBottomColor: "#f1f5f9",
-    paddingBottom: 8,
-  },
-  row: { flexDirection: "row", gap: 10 },
-  kindBtn: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    gap: 3,
-    borderWidth: 2,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8f9fb",
-  },
-  kindIcon: { fontSize: 18, color: "#64748b" },
-  kindTitle: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
-  kindSub: { fontSize: 11, color: "#94a3b8", textAlign: "center" },
   input: {
     backgroundColor: "#f8f9fb",
     borderWidth: 1,
@@ -376,21 +284,20 @@ const s = StyleSheet.create({
     fontSize: 15,
     color: "#0f172a",
   },
-
-  catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 7,
-    paddingHorizontal: 11,
-    borderRadius: 20,
+  kindRow: { flexDirection: "row", gap: 8 },
+  kindBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: "#e2e8f0",
     backgroundColor: "#f8f9fb",
+    alignItems: "center",
   },
-  chipText: { fontSize: 13, fontWeight: "600", color: "#475569" },
-
+  kindText: { fontSize: 14, fontWeight: "600", color: "#64748b" },
+  row2: { flexDirection: "row", gap: 12 },
+  freqBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12 },
+  freqBadgeText: { fontSize: 12, fontWeight: "600" },
   preview: {
     flexDirection: "row",
     alignItems: "center",

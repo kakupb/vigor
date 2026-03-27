@@ -1,6 +1,8 @@
 // app/_layout.tsx
-// Root Layout — Auth-Guard + lädt alle Stores beim Start
+const DEV_BYPASS = __DEV__ && true;
+
 import { useAuthStore } from "@/store/authStore";
+import { useFocusStore } from "@/store/focusStore";
 import { useHealthMetricsStore } from "@/store/healthMetricsStore";
 import { useUserStore } from "@/store/userStore";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -13,17 +15,21 @@ LogBox.ignoreLogs([
   "Authorization not determined",
 ]);
 
-// ─── Auth-Guard ───────────────────────────────────────────────────────────────
 function AuthGuard() {
   const { isAuthReady, session } = useAuthStore();
   const router = useRouter();
   const segments = useSegments() as string[];
 
   useEffect(() => {
+    if (DEV_BYPASS) {
+      const inAuthGroup = segments[0] === "(auth)";
+      if (inAuthGroup) router.replace("/(tabs)/fokus" as any);
+      return;
+    }
     if (!isAuthReady) return;
     const inAuthGroup = segments[0] === "(auth)";
     if (session && inAuthGroup) {
-      router.replace("/(tabs)/today");
+      router.replace("/(tabs)/fokus" as any);
     } else if (!session && !inAuthGroup) {
       router.replace("/(auth)/login" as any);
     }
@@ -32,23 +38,23 @@ function AuthGuard() {
   return null;
 }
 
-// ─── Root Layout ──────────────────────────────────────────────────────────────
 export default function RootLayout() {
   const { initialize, isAuthReady } = useAuthStore();
-  const loadUser = useUserStore((s) => s.loadUser);
+  const { loadUser, setName } = useUserStore();
   const loadMetrics = useHealthMetricsStore((s) => s.load);
+  const loadStats = useFocusStore((s) => s.loadStats);
 
   useEffect(() => {
-    // Alles parallel laden beim App-Start
-    Promise.all([
-      initialize(), // Supabase Session + onAuthStateChange
-      loadUser(), // Nutzerprofil
-      loadMetrics(), // Health-Metriken Konfiguration
-    ]);
+    if (DEV_BYPASS) {
+      setName("Dev User");
+      loadMetrics();
+      loadStats();
+      return;
+    }
+    Promise.all([initialize(), loadUser(), loadMetrics(), loadStats()]);
   }, []);
 
-  // Splash-Screen solange Auth nicht bereit
-  if (!isAuthReady) {
+  if (!DEV_BYPASS && !isAuthReady) {
     return (
       <View
         style={{

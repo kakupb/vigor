@@ -13,31 +13,29 @@ const TABS: {
   icon: IoniconName;
   iconActive: IoniconName;
 }[] = [
-  { name: "today", label: "Heute", icon: "sunny-outline", iconActive: "sunny" },
   {
-    name: "planner",
-    label: "Planner",
+    name: "fokus",
+    label: "Fokus",
+    icon: "timer-outline",
+    iconActive: "timer",
+  },
+  {
+    name: "fortschritt",
+    label: "Fortschritt",
+    icon: "flame-outline",
+    iconActive: "flame",
+  },
+  {
+    name: "planen",
+    label: "Planen",
     icon: "calendar-outline",
     iconActive: "calendar",
   },
   {
-    name: "notes",
-    label: "Notizen",
-    icon: "document-text-outline",
-    iconActive: "document-text",
-  },
-  {
-    name: "stats",
-    label: "Analyse",
-    icon: "bar-chart-outline",
-    iconActive: "bar-chart",
-  },
-  // ← NEU: Health-Tab
-  {
-    name: "health",
-    label: "Health",
-    icon: "heart-outline",
-    iconActive: "heart",
+    name: "mehr",
+    label: "Mehr",
+    icon: "grid-outline",
+    iconActive: "grid",
   },
 ];
 
@@ -82,9 +80,9 @@ function CustomTabBar({ state, descriptors, navigation, insets }: any) {
             }
           };
 
-          // Health-Tab bekommt eine spezielle rote Farbe wenn aktiv
-          const activeColor = tab.name === "health" ? "#ef4444" : "#3b8995";
-          const activeBg = tab.name === "health" ? "#fef2f2" : "#f0fbfc";
+          // Fokus-Tab bekommt primäre Farbe
+          const activeColor = tab.name === "fokus" ? "#3b8995" : "#3b8995";
+          const activeBg = tab.name === "fokus" ? "#f0fbfc" : "#f0fbfc";
 
           return (
             <HapticTab

@@ -21,136 +21,214 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Mode = "login" | "register";
 
-// ─── Passwort-Validierung ────────────────────────────────────────────────────
 function validatePassword(pw: string): string | null {
   if (pw.length < 8) return "Mindestens 8 Zeichen.";
-  if (!/[A-Z]/.test(pw)) return "Mindestens ein Großbuchstabe erforderlich.";
-  if (!/[0-9]/.test(pw)) return "Mindestens eine Zahl erforderlich.";
+  if (!/[A-Z]/.test(pw)) return "Mindestens ein Großbuchstabe.";
+  if (!/[0-9]/.test(pw)) return "Mindestens eine Zahl.";
   return null;
+}
+
+function translateError(msg: string): string {
+  if (msg.includes("Invalid login credentials"))
+    return "E-Mail oder Passwort falsch.";
+  if (msg.includes("Email not confirmed"))
+    return "Bitte bestätige zuerst deine E-Mail.";
+  if (msg.includes("User already registered"))
+    return "Diese E-Mail ist bereits registriert.";
+  if (msg.includes("Password should be"))
+    return "Passwort muss mindestens 8 Zeichen lang sein.";
+  if (msg.includes("Unable to validate")) return "Ungültige E-Mail-Adresse.";
+  if (msg.includes("network") || msg.includes("fetch"))
+    return "Keine Internetverbindung.";
+  return msg;
 }
 
 function PasswordStrength({ password }: { password: string }) {
   if (!password) return null;
-  const hasLength = password.length >= 8;
-  const hasUpper = /[A-Z]/.test(password);
-  const hasNumber = /[0-9]/.test(password);
-  const score = [hasLength, hasUpper, hasNumber].filter(Boolean).length;
-
-  const bars = [
-    score >= 1
-      ? score === 1
-        ? "#ef4444"
-        : score === 2
-        ? "#f59e0b"
-        : "#22c55e"
-      : "#2a2a3a",
-    score >= 2 ? (score === 2 ? "#f59e0b" : "#22c55e") : "#2a2a3a",
-    score >= 3 ? "#22c55e" : "#2a2a3a",
-  ];
-
-  const label = score === 1 ? "Schwach" : score === 2 ? "Mittel" : "Stark";
-  const labelColor =
-    score === 1 ? "#ef4444" : score === 2 ? "#f59e0b" : "#22c55e";
-
+  const score = [
+    password.length >= 8,
+    /[A-Z]/.test(password),
+    /[0-9]/.test(password),
+  ].filter(Boolean).length;
+  const colors = ["#ef4444", "#f59e0b", "#22c55e"];
+  const labels = ["Schwach", "Mittel", "Stark"];
   return (
-    <View style={pw.wrap}>
-      <View style={pw.bars}>
-        {bars.map((c, i) => (
-          <View key={i} style={[pw.bar, { backgroundColor: c }]} />
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <View style={{ flex: 1, flexDirection: "row", gap: 4 }}>
+        {[0, 1, 2].map((i) => (
+          <View
+            key={i}
+            style={{
+              flex: 1,
+              height: 3,
+              borderRadius: 2,
+              backgroundColor:
+                i < score ? colors[score - 1] : "rgba(255,255,255,0.08)",
+            }}
+          />
         ))}
       </View>
-      <Text style={[pw.label, { color: labelColor }]}>{label}</Text>
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: "600",
+          color: colors[score - 1] ?? "#64748b",
+          minWidth: 36,
+        }}
+      >
+        {labels[score - 1] ?? ""}
+      </Text>
     </View>
   );
 }
 
-// ─── Anforderungs-Chip ────────────────────────────────────────────────────────
 function Req({ met, text }: { met: boolean; text: string }) {
   return (
-    <View style={req.row}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
       <Ionicons
         name={met ? "checkmark-circle" : "ellipse-outline"}
         size={13}
-        color={met ? "#22c55e" : "#4a4a5a"}
+        color={met ? "#22c55e" : "rgba(255,255,255,0.2)"}
       />
-      <Text style={[req.txt, met && req.met]}>{text}</Text>
+      <Text
+        style={{
+          fontSize: 12,
+          color: met ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.25)",
+        }}
+      >
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  icon,
+  rightElement,
+  ...rest
+}: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  placeholder: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  rightElement?: React.ReactNode;
+  [key: string]: any;
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={f.label}>{label}</Text>
+      <View style={f.row}>
+        <Ionicons name={icon} size={16} color="rgba(255,255,255,0.2)" />
+        <TextInput
+          style={f.input}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="rgba(255,255,255,0.15)"
+          {...rest}
+        />
+        {rightElement}
+      </View>
+    </View>
+  );
+}
+
+function StatPill({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={{ flex: 1, alignItems: "center", gap: 2 }}>
+      <Text
+        style={{
+          fontSize: 15,
+          fontWeight: "800",
+          color: "#fff",
+          letterSpacing: -0.3,
+        }}
+      >
+        {value}
+      </Text>
+      <Text
+        style={{
+          fontSize: 10,
+          color: "rgba(255,255,255,0.3)",
+          fontWeight: "500",
+        }}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
 
 export default function LoginScreen() {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { signIn, signUp, signInWithApple } = useAuthStore();
 
   const [mode, setMode] = useState<Mode>("login");
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
   const [showPw, setShowPw] = useState(false);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const tabAnim = useRef(new Animated.Value(0)).current;
 
+  const tabAnim = useRef(new Animated.Value(0)).current;
   const isRegister = mode === "register";
 
-  function switchMode(next: Mode) {
-    setMode(next);
-    setError(null);
+  function switchMode(m: Mode) {
+    if (m === mode) return;
+    setMode(m);
+    setError("");
     Animated.spring(tabAnim, {
-      toValue: next === "login" ? 0 : 1,
+      toValue: m === "login" ? 0 : 1,
       useNativeDriver: true,
       tension: 80,
       friction: 12,
     }).start();
+    Haptics.selectionAsync();
   }
 
-  // ── Email/Passwort Submit ──────────────────────────────────────────────────
   async function handleSubmit() {
-    setError(null);
-    const emailTrimmed = email.trim().toLowerCase();
-    if (!emailTrimmed || !password) {
-      setError("Bitte E-Mail und Passwort eingeben.");
-      return;
-    }
-    if (isRegister && !username.trim()) {
-      setError("Bitte einen Benutzernamen eingeben.");
-      return;
-    }
+    setError("");
     if (isRegister) {
-      const pwError = validatePassword(password);
-      if (pwError) {
-        setError(pwError);
+      const pwErr = validatePassword(password);
+      if (pwErr) {
+        setError(pwErr);
         return;
       }
-    } else if (password.length < 8) {
-      setError("Passwort muss mindestens 8 Zeichen lang sein.");
-      return;
+      if (!email.trim()) {
+        setError("E-Mail fehlt.");
+        return;
+      }
     }
-
     setLoading(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    const result = isRegister
-      ? await signUp(emailTrimmed, password, username.trim())
-      : await signIn(emailTrimmed, password);
-
-    setLoading(false);
-
-    if (result.error) {
-      setError(translateError(result.error));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      const result = isRegister
+        ? await signUp(
+            email.trim().toLowerCase(),
+            password,
+            username.trim() || email.split("@")[0]
+          )
+        : await signIn(email.trim().toLowerCase(), password);
+      if (result.error) {
+        setError(translateError(result.error));
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } else
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } finally {
+      setLoading(false);
     }
   }
 
-  // ── Apple Sign-In ─────────────────────────────────────────────────────────
   async function handleAppleSignIn() {
     try {
       setAppleLoading(true);
-      setError(null);
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
@@ -158,7 +236,6 @@ export default function LoginScreen() {
         ],
       });
       if (!credential.identityToken) {
-        setError("Apple Sign-In fehlgeschlagen — kein Token erhalten.");
         setAppleLoading(false);
         return;
       }
@@ -172,9 +249,8 @@ export default function LoginScreen() {
       if (result.error) {
         setError(translateError(result.error));
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      } else {
+      } else
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
     } catch (e: any) {
       if (e?.code !== "ERR_REQUEST_CANCELED")
         setError("Apple Sign-In fehlgeschlagen.");
@@ -182,12 +258,6 @@ export default function LoginScreen() {
       setAppleLoading(false);
     }
   }
-
-  // Tab-Indikator Breite (~halbe Breite minus Padding)
-  const tabTranslate = tabAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1], // wird in % via calc gehandled
-  });
 
   return (
     <KeyboardAvoidingView
@@ -202,16 +272,28 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero ─────────────────────────────────────────────── */}
+        {/* ── Hero ── */}
         <View style={s.hero}>
-          <View style={s.logoMark}>
-            <Ionicons name="flash" size={22} color="#3b8995" />
+          <View style={s.logoRow}>
+            <View style={s.logoMark}>
+              <Ionicons name="timer" size={20} color="#3b8995" />
+            </View>
+            <Text style={s.logoText}>VIGOR</Text>
           </View>
-          <Text style={s.heroTitle}>VIGOR</Text>
-          <Text style={s.heroSub}>Dein persönlicher Alltags-Coach</Text>
+          <Text style={s.tagline}>Dein Study Companion</Text>
+          <Text style={s.taglineSub}>Fokussiert. Jeden Tag.</Text>
+
+          {/* Mini-Stat-Karte */}
+          <View style={s.statsCard}>
+            <StatPill value="25min" label="Pomodoro" />
+            <View style={s.statDiv} />
+            <StatPill value="Streak 🔥" label="täglich" />
+            <View style={s.statDiv} />
+            <StatPill value="−∞" label="YouTube" />
+          </View>
         </View>
 
-        {/* ── Tab-Switcher ──────────────────────────────────────── */}
+        {/* ── Tabs ── */}
         <View style={s.tabWrap}>
           <View style={s.tabTrack}>
             <Animated.View
@@ -222,7 +304,7 @@ export default function LoginScreen() {
                     {
                       translateX: tabAnim.interpolate({
                         inputRange: [0, 1],
-                        outputRange: [0, 148], // halbe Breite der Leiste
+                        outputRange: [0, 148],
                       }),
                     },
                   ],
@@ -242,9 +324,8 @@ export default function LoginScreen() {
           </View>
         </View>
 
-        {/* ── Form ─────────────────────────────────────────────── */}
+        {/* ── Form ── */}
         <View style={s.form}>
-          {/* Apple Sign-In */}
           {Platform.OS === "ios" && (
             <>
               {appleLoading ? (
@@ -264,30 +345,29 @@ export default function LoginScreen() {
                   onPress={handleAppleSignIn}
                 />
               )}
-              <View style={s.dividerRow}>
-                <View style={s.dividerLine} />
-                <Text style={s.dividerTx}>oder mit E-Mail</Text>
-                <View style={s.dividerLine} />
+              <View style={s.divRow}>
+                <View style={s.divLine} />
+                <Text style={s.divTx}>oder mit E-Mail</Text>
+                <View style={s.divLine} />
               </View>
             </>
           )}
 
-          {/* Benutzername — nur bei Register */}
           {isRegister && (
-            <DarkField
-              label="Benutzername"
+            <Field
+              label="NAME"
               value={username}
               onChangeText={setUsername}
-              placeholder="z. B. fitmax99"
-              icon="at-outline"
-              autoCapitalize="none"
-              autoComplete="username"
-              textContentType="username"
+              placeholder="Wie heißt du?"
+              icon="person-outline"
+              autoCapitalize="words"
+              autoComplete="name"
+              textContentType="name"
             />
           )}
 
-          <DarkField
-            label="E-Mail"
+          <Field
+            label="E-MAIL"
             value={email}
             onChangeText={setEmail}
             placeholder="du@beispiel.de"
@@ -298,8 +378,8 @@ export default function LoginScreen() {
             autoCapitalize="none"
           />
 
-          <DarkField
-            label="Passwort"
+          <Field
+            label="PASSWORT"
             value={password}
             onChangeText={setPassword}
             placeholder={
@@ -316,17 +396,16 @@ export default function LoginScreen() {
                 <Ionicons
                   name={showPw ? "eye-off-outline" : "eye-outline"}
                   size={18}
-                  color="#6a6a7a"
+                  color="rgba(255,255,255,0.25)"
                 />
               </Pressable>
             }
           />
 
-          {/* Passwort-Stärke + Anforderungen */}
           {isRegister && password.length > 0 && (
-            <View style={s.reqWrap}>
+            <View style={{ gap: 8, marginTop: -4 }}>
               <PasswordStrength password={password} />
-              <View style={s.reqList}>
+              <View style={{ gap: 4 }}>
                 <Req met={password.length >= 8} text="Mindestens 8 Zeichen" />
                 <Req met={/[A-Z]/.test(password)} text="Ein Großbuchstabe" />
                 <Req met={/[0-9]/.test(password)} text="Eine Zahl" />
@@ -334,41 +413,42 @@ export default function LoginScreen() {
             </View>
           )}
 
-          {/* Passwort vergessen */}
           {!isRegister && (
             <Pressable
               onPress={() => router.push("/(auth)/reset-password" as any)}
-              style={s.forgotBtn}
+              style={{ alignSelf: "flex-end", marginTop: -4 }}
             >
-              <Text style={s.forgotTx}>Passwort vergessen?</Text>
+              <Text
+                style={{ fontSize: 13, color: "#3b8995", fontWeight: "500" }}
+              >
+                Passwort vergessen?
+              </Text>
             </Pressable>
           )}
 
-          {/* Fehlermeldung */}
-          {error && (
-            <View style={s.errorBox}>
+          {error ? (
+            <View style={s.errBox}>
               <Ionicons name="alert-circle-outline" size={15} color="#f87171" />
-              <Text style={s.errorTx}>{error}</Text>
+              <Text style={s.errTx}>{error}</Text>
             </View>
-          )}
+          ) : null}
 
-          {/* Submit */}
           <Pressable
             onPress={handleSubmit}
             disabled={loading}
-            style={({ pressed }) => [s.btn, pressed && { opacity: 0.82 }]}
+            style={({ pressed }) => [s.btn, pressed && { opacity: 0.85 }]}
           >
             {loading ? (
-              <ActivityIndicator size="small" color="#0a0a14" />
+              <ActivityIndicator size="small" color="#fff" />
             ) : (
               <Text style={s.btnTx}>
-                {isRegister ? "Konto erstellen" : "Anmelden"}
+                {isRegister ? "Konto erstellen" : "Einloggen & fokussieren"}
               </Text>
             )}
           </Pressable>
         </View>
 
-        <Text style={s.legalTx}>
+        <Text style={s.legal}>
           Mit der Nutzung stimmst du unserer Datenschutzerklärung zu.{"\n"}
           Gesundheitsdaten verlassen niemals dein Gerät.
         </Text>
@@ -377,95 +457,80 @@ export default function LoginScreen() {
   );
 }
 
-// ─── Dark Field ───────────────────────────────────────────────────────────────
-function DarkField({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  icon,
-  rightElement,
-  ...rest
-}: {
-  label: string;
-  value: string;
-  onChangeText: (v: string) => void;
-  placeholder: string;
-  icon: React.ComponentProps<typeof Ionicons>["name"];
-  rightElement?: React.ReactNode;
-  [key: string]: any;
-}) {
-  return (
-    <View style={f.wrap}>
-      <Text style={f.label}>{label}</Text>
-      <View style={f.row}>
-        <Ionicons name={icon} size={16} color="#4a4a5a" style={f.icon} />
-        <TextInput
-          style={f.input}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor="#3a3a4a"
-          {...rest}
-        />
-        {rightElement}
-      </View>
-    </View>
-  );
-}
+const f = StyleSheet.create({
+  label: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.28)",
+    letterSpacing: 0.9,
+    textTransform: "uppercase",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  input: { flex: 1, fontSize: 15, color: "#e2e8f0", padding: 0 },
+});
 
-function translateError(msg: string): string {
-  if (msg.includes("Invalid login credentials"))
-    return "E-Mail oder Passwort falsch.";
-  if (msg.includes("Email not confirmed"))
-    return "Bitte bestätige zuerst deine E-Mail.";
-  if (msg.includes("User already registered"))
-    return "Diese E-Mail ist bereits registriert.";
-  if (msg.includes("Password should be"))
-    return "Passwort muss mindestens 8 Zeichen lang sein.";
-  if (msg.includes("Unable to validate")) return "Ungültige E-Mail-Adresse.";
-  if (msg.includes("network") || msg.includes("fetch"))
-    return "Keine Internetverbindung.";
-  if (msg.includes("not enabled") || msg.includes("provider"))
-    return "Apple-Anmeldung ist gerade nicht verfügbar.";
-  return msg;
-}
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0a0a14" },
+  root: { flex: 1, backgroundColor: "#080d16" },
   scroll: { flexGrow: 1, paddingHorizontal: 24 },
 
-  // Hero
   hero: { alignItems: "center", marginBottom: 36, gap: 8 },
+  logoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 6,
+  },
   logoMark: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: "#111120",
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: "rgba(59,137,149,0.12)",
     borderWidth: 1,
-    borderColor: "#1e2a2e",
+    borderColor: "rgba(59,137,149,0.28)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
   },
-  heroTitle: {
-    fontSize: 32,
+  logoText: {
+    fontSize: 30,
     fontWeight: "800",
-    color: "#f0f4f8",
-    letterSpacing: 6,
+    color: "#fff",
+    letterSpacing: 5,
   },
-  heroSub: {
-    fontSize: 13,
-    color: "#4a5568",
-    letterSpacing: 0.5,
+  tagline: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#fff",
+    letterSpacing: -0.2,
   },
+  taglineSub: { fontSize: 13, color: "rgba(255,255,255,0.3)", marginTop: -4 },
+  statsCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    width: "100%",
+  },
+  statDiv: { width: 1, height: 24, backgroundColor: "rgba(255,255,255,0.08)" },
 
-  // Tab switcher
-  tabWrap: { marginBottom: 28 },
+  tabWrap: { marginBottom: 24 },
   tabTrack: {
     flexDirection: "row",
-    backgroundColor: "#111120",
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 14,
     padding: 4,
     position: "relative",
@@ -479,112 +544,46 @@ const s = StyleSheet.create({
     backgroundColor: "#3b8995",
     borderRadius: 11,
   },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 11,
-    alignItems: "center",
-    zIndex: 1,
-  },
-  tabTx: { fontSize: 14, fontWeight: "600", color: "#4a5568" },
+  tabBtn: { flex: 1, paddingVertical: 11, alignItems: "center", zIndex: 1 },
+  tabTx: { fontSize: 14, fontWeight: "600", color: "rgba(255,255,255,0.3)" },
   tabTxActive: { color: "#fff" },
 
-  // Form area
   form: { gap: 16 },
-
-  // Apple
   appleBtn: { height: 52, width: "100%", borderRadius: 14 },
   appleLoading: {
     height: 52,
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-
-  // Divider
-  dividerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: "#1a1a2a" },
-  dividerTx: { fontSize: 12, color: "#3a3a4a", fontWeight: "500" },
-
-  // Requirements
-  reqWrap: { gap: 8, marginTop: -4 },
-  reqList: { gap: 4 },
-
-  // Forgot
-  forgotBtn: { alignSelf: "flex-end", marginTop: -4 },
-  forgotTx: { fontSize: 13, color: "#3b8995", fontWeight: "500" },
-
-  // Error
-  errorBox: {
+  divRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  divLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.07)" },
+  divTx: { fontSize: 12, color: "rgba(255,255,255,0.2)", fontWeight: "500" },
+  errBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#1f0a0a",
+    backgroundColor: "rgba(239,68,68,0.1)",
     borderWidth: 1,
-    borderColor: "#3f1a1a",
+    borderColor: "rgba(239,68,68,0.22)",
     borderRadius: 10,
     padding: 12,
   },
-  errorTx: { flex: 1, fontSize: 13, color: "#f87171" },
-
-  // Button
+  errTx: { flex: 1, fontSize: 13, color: "#f87171" },
   btn: {
     backgroundColor: "#3b8995",
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 17,
     alignItems: "center",
     marginTop: 4,
   },
-  btnTx: { color: "#fff", fontWeight: "700", fontSize: 16, letterSpacing: 0.3 },
-
-  // Legal
-  legalTx: {
+  btnTx: { color: "#fff", fontWeight: "700", fontSize: 16, letterSpacing: 0.2 },
+  legal: {
     fontSize: 11,
-    color: "#2a2a3a",
+    color: "rgba(255,255,255,0.14)",
     textAlign: "center",
     lineHeight: 18,
     marginTop: 28,
   },
-});
-
-const f = StyleSheet.create({
-  wrap: { gap: 6 },
-  label: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#4a5568",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#111120",
-    borderWidth: 1,
-    borderColor: "#1a1a2a",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    gap: 10,
-  },
-  icon: {},
-  input: {
-    flex: 1,
-    fontSize: 15,
-    color: "#e2e8f0",
-    padding: 0,
-  },
-});
-
-const pw = StyleSheet.create({
-  wrap: { flexDirection: "row", alignItems: "center", gap: 10 },
-  bars: { flexDirection: "row", gap: 4, flex: 1 },
-  bar: { flex: 1, height: 3, borderRadius: 2 },
-  label: { fontSize: 12, fontWeight: "600", minWidth: 40, textAlign: "right" },
-});
-
-const req = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 6 },
-  txt: { fontSize: 12, color: "#3a3a4a" },
-  met: { color: "#4a5568" },
 });

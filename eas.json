@@ -18,6 +18,12 @@
       }
     },
     "submit": {
-      "production": {}
+      "production": {
+        "ios": {
+          "appleId": "yakubadar99@gmail.com",
+          "ascAppId": "6760257534",
+          "appleTeamId": "U2QV4QR93K"
+        }
+      }
     }
   }

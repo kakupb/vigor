@@ -30,7 +30,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 type FocusScreenProps = {
   visible: boolean;
   entries: PlannerEntry[];
-  onExit: () => void;
+  onExit: (durationSeconds: number) => void;
 };
 
 type Sheet = "none" | "settings";
@@ -48,7 +48,8 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
   const insets = useSafeAreaInsets();
   const [currentEntry, setCurrentEntry] = useState<PlannerEntry | null>(null);
   const [isExiting, setIsExiting] = useState(false);
-  const [focusStartTime] = useState(Date.now());
+  // Startzeit — null bis der User auf Play drückt
+  const actualStartTimeRef = useRef<number | null>(null);
   const [activeSheet, setActiveSheet] = useState<Sheet>("none");
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [editValue, setEditValue] = useState("");
@@ -126,10 +127,23 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
 
   const {
     state: pomodoroState,
-    start,
+    start: startTimer,
     pause,
-    reset,
+    reset: resetTimer,
   } = usePomodoro(pomodoroConfig, playBell);
+
+  // Startzeit erst setzen wenn Play gedrückt wird
+  function start() {
+    if (!actualStartTimeRef.current) {
+      actualStartTimeRef.current = Date.now();
+    }
+    startTimer();
+  }
+
+  function reset() {
+    actualStartTimeRef.current = null;
+    resetTimer();
+  }
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const pressStartTime = useRef<number | null>(null);
@@ -143,7 +157,6 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
   const addSessionRef = useRef(addSession);
   const onExitRef = useRef(onExit);
   const resetRef = useRef(reset);
-  const focusStartTimeRef = useRef(focusStartTime);
 
   useEffect(() => {
     activeSheetRef.current = activeSheet;
@@ -329,23 +342,26 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
 
     const entry = currentEntryRef.current;
     const ps = pomodoroStateRef.current;
-    const t0 = focusStartTimeRef.current;
+    const t0 = actualStartTimeRef.current ?? Date.now();
     const dur = Math.floor((Date.now() - t0) / 1000);
 
-    addSessionRef.current({
-      id: Crypto.randomUUID(),
-      startedAt: t0,
-      endedAt: Date.now(),
-      entryId: entry?.id,
-      entryTitle: entry?.title,
-      category: entry?.category,
-      durationSeconds: dur,
-      completed: true,
-      pomodoroCount: ps.completedPomodoros,
-    });
+    // Nur Sessions >= 60 Sekunden speichern
+    if (dur >= 60) {
+      addSessionRef.current({
+        id: Crypto.randomUUID(),
+        startedAt: t0,
+        endedAt: Date.now(),
+        entryId: entry?.id,
+        entryTitle: entry?.title,
+        category: entry?.category,
+        durationSeconds: dur,
+        completed: true,
+        pomodoroCount: ps.completedPomodoros,
+      });
+    }
 
     setTimeout(() => {
-      onExitRef.current();
+      onExitRef.current(dur);
       setIsExiting(false);
       progressAnim.setValue(0);
       phaseRef.current = 0;
