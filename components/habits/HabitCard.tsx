@@ -1,5 +1,5 @@
 // components/habits/HabitCard.tsx
-import { getCategoryConfig } from "@/constants/categories";
+import { useCategoryConfig } from "@/hooks/useCategoryConfig";
 import { PlannerCategory } from "@/types/planner";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AntDesign from "@expo/vector-icons/AntDesign";
@@ -28,6 +28,7 @@ type HabitCardProps = {
   category?: PlannerCategory;
   todayAmount: number;
   expanded: boolean;
+  customCategoryId?: string;
   onIncrease: (amount: number) => void;
   onToggle: () => void;
   onDelete: () => void;
@@ -54,9 +55,10 @@ export function HabitCard({
   onEdit,
   onExpand,
   onSetAmount,
+  customCategoryId,
 }: HabitCardProps) {
   const [barWidth, setBarWidth] = useState(0);
-  const categoryConfig = getCategoryConfig(category);
+  const categoryConfig = useCategoryConfig(category, customCategoryId);
 
   const progress =
     kind === "count" && dailyTarget && dailyTarget > 0

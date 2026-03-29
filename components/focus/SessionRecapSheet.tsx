@@ -235,7 +235,7 @@ export function SessionRecapSheet({
               <StatKachel
                 icon="flame-outline"
                 value={streak > 0 ? `${streak}` : "–"}
-                label={streak === 1 ? "Tag Streak" : "Tage Streak"}
+                label={streak === 1 ? "Tag Fokus" : "Tage Fokus-Streak"}
                 color={streak > 0 ? "#f59e0b" : c.dark ? "#475569" : "#94a3b8"}
                 bg={
                   streak > 0

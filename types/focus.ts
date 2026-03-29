@@ -2,6 +2,8 @@
 
 import { PlannerCategory } from "./planner";
 
+export type SessionStatus = "complete" | "interrupted";
+
 export type FocusSession = {
   id: string;
   startedAt: number;
@@ -10,8 +12,10 @@ export type FocusSession = {
   entryTitle?: string;
   category?: PlannerCategory;
   durationSeconds: number;
-  completed: boolean; // War es eine vollständige Session?
-  pomodoroCount?: number; // Anzahl abgeschlossener Pomodoros
+  focusSeconds?: number; // ← NEU, optional für Rückwärtskompatibilität
+  status?: SessionStatus; // ← NEU, optional
+  completed: boolean;
+  pomodoroCount?: number;
 };
 
 export type FocusStats = {

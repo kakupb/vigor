@@ -36,13 +36,13 @@ export const AMBIENT_SOUNDS: {
 
 // Dateipfade — MP3s unter assets/sounds/ ablegen
 // Kostenlose Loops: freesound.org / mynoise.net (30–60 Sek. reichen, isLooping: true)
-export const SOUND_FILES: Record<AmbientSound, any> = {
-  none: null,
-  white: require("@/assets/sounds/white-noise.mp3"),
-  brown: require("@/assets/sounds/brown-noise.mp3"),
-  rain: require("@/assets/sounds/rain.mp3"),
-  ocean: require("@/assets/sounds/ocean.mp3"),
-  forest: require("@/assets/sounds/forest.mp3"),
+export const SOUND_FILES: Record<AmbientSound, () => any | null> = {
+  none: () => null,
+  white: () => require("@/assets/sounds/white-noise.mp3"),
+  brown: () => require("@/assets/sounds/brown-noise.mp3"),
+  rain: () => require("@/assets/sounds/rain.mp3"),
+  ocean: () => require("@/assets/sounds/ocean.mp3"),
+  forest: () => require("@/assets/sounds/forest.mp3"),
 };
 
 const defaultStats: FocusStats = {
@@ -113,20 +113,32 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   selectedSound: "none",
   pomodoroConfig: DEFAULT_POMODORO_CONFIG,
 
-  addSession: (session) => {
+  addSession: (session: FocusSession) => {
+    const focusSeconds = session.focusSeconds ?? session.durationSeconds;
+    const pomodoroCount = session.pomodoroCount ?? 0;
+
+    // Aborted-Check: kein vollständiger Zyklus UND < 60s Fokuszeit → verwerfen
+    if (session.status === "interrupted" && focusSeconds < 60) return;
+
     const newSessions = [...get().sessions, session];
-    const durationMinutes = Math.floor(session.durationSeconds / 60);
+    const focusMinutes = Math.floor(focusSeconds / 60);
+
     const updatedStats: FocusStats = {
       ...get().stats,
-      totalSessions: get().stats.totalSessions + 1,
-      totalMinutes: get().stats.totalMinutes + durationMinutes,
-      longestSessionMinutes: Math.max(
-        get().stats.longestSessionMinutes,
-        durationMinutes
-      ),
-      pomodorosCompleted:
-        get().stats.pomodorosCompleted + (session.pomodoroCount ?? 0),
+      totalSessions:
+        get().stats.totalSessions + (session.status === "complete" ? 1 : 0),
+      totalMinutes:
+        get().stats.totalMinutes +
+        (session.status === "complete"
+          ? focusMinutes
+          : Math.floor(focusMinutes / 2)),
+      longestSessionMinutes:
+        session.status === "complete"
+          ? Math.max(get().stats.longestSessionMinutes, focusMinutes)
+          : get().stats.longestSessionMinutes,
+      pomodorosCompleted: get().stats.pomodorosCompleted + pomodoroCount,
     };
+
     set({ sessions: newSessions, stats: updatedStats });
     storage.save("focus_sessions", newSessions);
     storage.save("focus_stats", updatedStats);

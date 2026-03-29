@@ -133,8 +133,8 @@ export function CreateCategorySheet({ visible, onClose, onCreated }: Props) {
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    add(label.trim(), selectedColor, iconToString(selectedIcon));
-    onCreated?.(`custom_${Date.now()}`);
+    const newId = add(label.trim(), selectedColor, iconToString(selectedIcon)); // ← ID fangen
+    onCreated?.(newId); // ← statt custom_${Date.now()}
     handleClose();
   }
 

@@ -6,11 +6,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
 export type CustomCategory = {
-  id: string; // "custom_uuid"
+  id: string;
   label: string;
   color: string;
   emoji: string;
   createdAt: number;
+  usageCount?: number; // ← optional, damit bestehende Daten nicht brechen
 };
 
 const STORAGE_KEY = "custom_categories_v1";
@@ -50,8 +51,9 @@ const PRESET_EMOJIS = [
 type CustomCategoryState = {
   categories: CustomCategory[];
   load: () => Promise<void>;
-  add: (label: string, color: string, emoji: string) => void;
+  add: (label: string, color: string, emoji: string) => string;
   remove: (id: string) => void;
+  incrementUsage: (id: string) => void; // ← NEU
   presetColors: string[];
   presetEmojis: string[];
 };
@@ -76,14 +78,23 @@ export const useCustomCategoryStore = create<CustomCategoryState>(
         color,
         emoji,
         createdAt: Date.now(),
+        usageCount: 0,
       };
       const updated = [...get().categories, newCat];
       set({ categories: updated });
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      return newCat.id; // ← zurückgeben
     },
 
     remove: (id) => {
       const updated = get().categories.filter((c) => c.id !== id);
+      set({ categories: updated });
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    },
+    incrementUsage: (id) => {
+      const updated = get().categories.map((c) =>
+        c.id === id ? { ...c, usageCount: (c.usageCount ?? 0) + 1 } : c
+      );
       set({ categories: updated });
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     },

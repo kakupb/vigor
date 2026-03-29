@@ -5,12 +5,19 @@ import { sanitizeCategory } from "@/constants/categories";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser, syncUpsert } from "@/lib/sync";
 import * as habitService from "@/services/habitService";
+import {
+  cancelStreakAtRiskReminder,
+  scheduleStreakAtRiskReminder,
+} from "@/services/notificationService";
 import { storage } from "@/services/storage";
 import { Habit, HabitKind, HabitSchedule } from "@/types/habit";
 import { PlannerCategory } from "@/types/planner";
 import { getTodayTimestamp } from "@/utils/dateUtils";
+import { getStreak } from "@/utils/getStreak";
+import { isScheduledForToday } from "@/utils/scheduleUtils";
 import * as Crypto from "expo-crypto";
 import { create } from "zustand";
+import { useUserStore } from "./userStore";
 
 // ─── Mapping: Habit → Supabase row ───────────────────────────────────────────
 async function toRow(h: Habit) {
@@ -22,6 +29,7 @@ async function toRow(h: Habit) {
     title: h.title,
     kind: h.kind,
     category: h.category ?? null,
+    custom_category_id: h.customCategoryId ?? null, // ← NEU
     unit: h.unit ?? null,
     daily_target: h.dailyTarget ?? null,
     schedule: h.schedule ?? null,
@@ -37,6 +45,7 @@ function fromRow(r: any): Habit {
     title: r.title,
     kind: r.kind ?? "boolean",
     category: sanitizeCategory(r.category),
+    customCategoryId: r.custom_category_id ?? undefined, // ← NEU
     unit: r.unit ?? undefined,
     dailyTarget: r.daily_target ?? undefined,
     schedule: r.schedule ?? undefined,
@@ -66,7 +75,8 @@ type HabitState = {
     category?: PlannerCategory,
     unit?: string,
     dailyTarget?: number,
-    schedule?: HabitSchedule
+    schedule?: HabitSchedule,
+    customCategoryId?: string
   ) => void;
   updateHabit: (
     habitId: string,
@@ -82,7 +92,15 @@ type HabitState = {
 export const useHabitStore = create<HabitState>((set, get) => ({
   habits: [],
 
-  addHabit: (title, kind, category, unit, dailyTarget, schedule) => {
+  addHabit: (
+    title,
+    kind,
+    category,
+    unit,
+    dailyTarget,
+    schedule,
+    customCategoryId
+  ) => {
     const newHabit: Habit = {
       id: Crypto.randomUUID(),
       title,
@@ -90,6 +108,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       unit,
       dailyTarget,
       category,
+      customCategoryId, // ← NEU
       schedule,
       createdAt: Date.now(),
       completedDates: [],
@@ -136,6 +155,27 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       return habitService.incrementCountHabit(habit, 1, timestamp);
     });
     set({ habits: updated });
+    const { name } = useUserStore.getState(); // im store über zustand getState
+    const allTodayDone = updated
+      .filter((h) => isScheduledForToday(h.schedule))
+      .every((h) => h.completedDates.includes(getTodayTimestamp()));
+
+    if (allTodayDone) {
+      cancelStreakAtRiskReminder();
+    } else {
+      // Habit mit höchstem Streak als Anker nehmen
+      const topHabit = updated.reduce(
+        (a, b) => (getStreak(b) > getStreak(a) ? b : a),
+        updated[0]
+      );
+      if (topHabit) {
+        scheduleStreakAtRiskReminder({
+          userName: name,
+          habitTitle: topHabit.title,
+          streak: getStreak(topHabit),
+        });
+      }
+    }
     const changed = updated.find((h) => h.id === habitId);
     if (changed) saveAndSync(updated, changed);
   },

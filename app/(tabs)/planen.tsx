@@ -206,6 +206,7 @@ export default function PlanenScreen() {
                       dailyTarget={habit.dailyTarget}
                       category={habit.category}
                       todayAmount={todayAmount}
+                      customCategoryId={habit.customCategoryId}
                       onToggle={() => actions.toggleCheckIn(habit.id)}
                       onDelete={() => actions.deleteHabit(habit.id)}
                       onDetail={() => router.push(`/habit/${habit.id}`)}
@@ -241,6 +242,7 @@ export default function PlanenScreen() {
                         dailyTarget={habit.dailyTarget}
                         category={habit.category}
                         todayAmount={todayAmount}
+                        customCategoryId={habit.customCategoryId}
                         onToggle={() => actions.toggleCheckIn(habit.id)}
                         onDelete={() => actions.deleteHabit(habit.id)}
                         onDetail={() => router.push(`/habit/${habit.id}`)}

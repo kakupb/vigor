@@ -48,48 +48,6 @@ export function openNotificationSettings(): void {
   Linking.openSettings();
 }
 
-// ─── Notification für ein Habit planen ───────────────────────────────────────
-export async function scheduleHabitReminder({
-  habitId,
-  habitTitle,
-  hour,
-  minute,
-  weekdays,
-}: {
-  habitId: string;
-  habitTitle: string;
-  hour: number;
-  minute: number;
-  weekdays?: number[]; // 1=Mo ... 7=So (ISO-Wochentag)
-}): Promise<PermissionResult> {
-  await cancelHabitReminders(habitId);
-
-  const result = await requestNotificationPermission();
-  if (result !== "granted") return result;
-
-  const days = weekdays ?? [1, 2, 3, 4, 5, 6, 7];
-
-  await Promise.all(
-    days.map((weekday) =>
-      Notifications.scheduleNotificationAsync({
-        content: {
-          title: "⏰ " + habitTitle,
-          body: "Zeit für dein tägliches Habit!",
-          data: { habitId },
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-          weekday,
-          hour,
-          minute,
-        },
-      })
-    )
-  );
-
-  return "granted";
-}
-
 // ─── Notifications für ein Habit löschen ─────────────────────────────────────
 export async function cancelHabitReminders(habitId: string): Promise<void> {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
@@ -112,4 +70,123 @@ export async function getHabitReminderTime(
   if (!match) return null;
   const trigger = match.trigger as any;
   return { hour: trigger.hour ?? 8, minute: trigger.minute ?? 0 };
+}
+
+// ─── Streak-at-Risk: täglicher Check um 21 Uhr ───────────────────────────────
+// Aufrufen beim App-Start + nach jeder Habit-Änderung (cancelAndReschedule-Pattern)
+export async function scheduleStreakAtRiskReminder({
+  userName,
+  habitTitle,
+  streak,
+}: {
+  userName: string | null;
+  habitTitle: string;
+  streak: number;
+}): Promise<void> {
+  const result = await requestNotificationPermission();
+  if (result !== "granted") return;
+
+  // Alle alten Streak-Reminders entfernen
+  const all = await Notifications.getAllScheduledNotificationsAsync();
+  await Promise.all(
+    all
+      .filter((n) => n.content.data?.type === "streak-at-risk")
+      .map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier))
+  );
+
+  const name = userName && userName !== "_onboarded" ? userName : null;
+  const title = name
+    ? `${name}, dein Streak ist in Gefahr! 🔥`
+    : "Streak in Gefahr! 🔥";
+  const body =
+    streak > 3
+      ? `${streak} Tage ${habitTitle} – gib nicht auf!`
+      : `Schließ ${habitTitle} heute noch ab.`;
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title,
+      body,
+      data: { type: "streak-at-risk" },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: 21,
+      minute: 0,
+    },
+  });
+}
+
+// Abbrechen wenn alle Habits des Tages erledigt sind
+export async function cancelStreakAtRiskReminder(): Promise<void> {
+  const all = await Notifications.getAllScheduledNotificationsAsync();
+  await Promise.all(
+    all
+      .filter((n) => n.content.data?.type === "streak-at-risk")
+      .map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier))
+  );
+}
+export async function scheduleHabitReminder({
+  habitId,
+  habitTitle,
+  hour,
+  minute,
+  weekdays,
+  userName, // ← NEU
+  streak, // ← NEU
+}: {
+  habitId: string;
+  habitTitle: string;
+  hour: number;
+  minute: number;
+  weekdays?: number[];
+  userName?: string | null; // ← NEU
+  streak?: number; // ← NEU
+}): Promise<PermissionResult> {
+  await cancelHabitReminders(habitId);
+  const result = await requestNotificationPermission();
+  if (result !== "granted") return result;
+
+  const days = weekdays ?? [1, 2, 3, 4, 5, 6, 7];
+
+  // Personalisierter Body
+  const name = userName && userName !== "_onboarded" ? userName : null;
+  const body = buildReminderBody(habitTitle, streak ?? 0, name);
+
+  await Promise.all(
+    days.map((weekday) =>
+      Notifications.scheduleNotificationAsync({
+        content: {
+          title: `⏰ ${habitTitle}`,
+          body,
+          data: { habitId },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+          weekday,
+          hour,
+          minute,
+        },
+      })
+    )
+  );
+  return "granted";
+}
+
+// ─── Variierter Body-Text ─────────────────────────────────────────────────────
+function buildReminderBody(
+  habitTitle: string,
+  streak: number,
+  name: string | null
+): string {
+  const greeting = name ? `${name}, ` : "";
+
+  if (streak === 0)
+    return `${greeting}Zeit für ${habitTitle}. Starte deinen Streak heute!`;
+  if (streak === 1) return `${greeting}Tag 1 von ${habitTitle} – bleib dabei!`;
+  if (streak < 7)
+    return `${greeting}${streak} Tage ${habitTitle}. Reiß nicht ab! 🔥`;
+  if (streak < 30)
+    return `${greeting}${streak}-Tage-Streak! ${habitTitle} wartet auf dich.`;
+  return `${greeting}${streak} Tage am Stück. ${habitTitle} – du weißt was zu tun ist.`;
 }

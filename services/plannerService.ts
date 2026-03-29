@@ -104,6 +104,7 @@ export function normalizeEntry(
     endDate,
     endTime,
     category: input.category,
+    customCategoryId: input.customCategoryId, // ← NEU
     habitId: input.habitId,
     note: input.note,
     color: input.color,

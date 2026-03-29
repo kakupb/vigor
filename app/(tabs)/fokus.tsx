@@ -501,8 +501,18 @@ export default function FokusScreen() {
   const styles = makeStyles(c);
   const habitRate =
     todayHabits.length > 0 ? habitsCompleted / todayHabits.length : 0;
-  const totalMinutes = focusStats.totalMinutes;
-  const totalHours = Math.floor(totalMinutes / 60);
+  const sessions = useFocusStore((s) => s.sessions);
+  const todayMinutes = useMemo(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return sessions
+      .filter((s) => s.startedAt >= todayStart.getTime())
+      .reduce(
+        (sum, s) =>
+          sum + Math.floor((s.focusSeconds ?? s.durationSeconds) / 60),
+        0
+      );
+  }, [sessions]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -554,9 +564,13 @@ export default function FokusScreen() {
               <Text style={styles.streakValue}>{streakLabel}</Text>
             </View>
             <View style={styles.streakRight}>
-              <Text style={styles.streakTotal}>Gesamt</Text>
+              <Text style={styles.streakTotal}>Heute</Text>
               <Text style={styles.streakTotalVal}>
-                {totalHours > 0 ? `${totalHours}h` : `${totalMinutes}min`}
+                {todayMinutes >= 60
+                  ? `${Math.floor(todayMinutes / 60)}h ${
+                      todayMinutes % 60 > 0 ? `${todayMinutes % 60}m` : ""
+                    }`
+                  : `${todayMinutes}min`}
               </Text>
             </View>
           </View>
@@ -752,15 +766,16 @@ export default function FokusScreen() {
       <FocusScreen
         visible={focusVisible}
         entries={plannerToday}
-        onExit={(durationSeconds: number) => {
+        onExit={(durationSeconds) => {
           setFocusVisible(false);
-          if (durationSeconds >= 60) {
-            const sessions = useFocusStore.getState().sessions;
-            const last = sessions[sessions.length - 1];
+          const sessions = useFocusStore.getState().sessions;
+          const last = sessions[sessions.length - 1];
+          if (last?.status === "complete") {
             setLastSessionSeconds(durationSeconds);
-            setLastSessionPomodoros(last?.pomodoroCount ?? 0);
+            setLastSessionPomodoros(last.pomodoroCount ?? 0);
             setTimeout(() => setRecapVisible(true), 400);
           }
+          // Interrupted: kein Recap, optional ein kurzes Toast/Alert
         }}
       />
 

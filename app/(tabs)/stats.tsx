@@ -10,6 +10,7 @@ import { HealthSection } from "@/components/stats/HealthSection";
 import { StatsEmptyState } from "@/components/stats/StatsEmptyState";
 import { getCategoryConfig } from "@/constants/categories";
 import { useHabits } from "@/hooks/useHabits";
+import { useFocusStore } from "@/store/focusStore";
 import { usePlannerStore } from "@/store/plannerStore";
 import { dateToLocalString, getTodayTimestamp } from "@/utils/dateUtils";
 import { getCompletionRate } from "@/utils/getStreak";
@@ -233,6 +234,81 @@ const wb = StyleSheet.create({
   barLabel: { fontSize: 11, color: "#94a3b8", fontWeight: "500" },
 });
 
+// ─── Fokus-Zeitreihe (letzte 7 Tage) ─────────────────────────────────────────
+function FocusWeekChart() {
+  const sessions = useFocusStore((s) => s.sessions);
+  const SCREEN_W = Dimensions.get("window").width;
+
+  const bars = useMemo(() => {
+    const today = new Date();
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() - (6 - i));
+      const dateStr = dateToLocalString(d);
+      const minutes = sessions
+        .filter(
+          (s) => new Date(s.startedAt).toISOString().split("T")[0] === dateStr
+        )
+        .reduce((sum, s) => sum + Math.floor(s.durationSeconds / 60), 0);
+      const isToday = i === 6;
+      return {
+        label: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][
+          d.getDay() === 0 ? 6 : d.getDay() - 1
+        ],
+        minutes,
+        isToday,
+      };
+    });
+  }, [sessions]);
+
+  const maxMin = Math.max(...bars.map((b) => b.minutes), 1);
+  const BAR_H = 72;
+
+  return (
+    <View style={{ marginTop: 20 }}>
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: "600",
+          color: "#64748b",
+          marginBottom: 12,
+        }}
+      >
+        Fokus-Zeit (7 Tage)
+      </Text>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}>
+        {bars.map((b, i) => (
+          <View key={i} style={{ flex: 1, alignItems: "center", gap: 4 }}>
+            <Text style={{ fontSize: 10, color: "#94a3b8" }}>
+              {b.minutes > 0 ? `${b.minutes}m` : ""}
+            </Text>
+            <View
+              style={{
+                width: "100%",
+                height: Math.max(
+                  (b.minutes / maxMin) * BAR_H,
+                  b.minutes > 0 ? 4 : 0
+                ),
+                backgroundColor: b.isToday ? "#3b8995" : "#94a3b8",
+                borderRadius: 4,
+                opacity: b.isToday ? 1 : 0.55,
+              }}
+            />
+            <Text
+              style={{
+                fontSize: 10,
+                color: b.isToday ? "#3b8995" : "#94a3b8",
+                fontWeight: b.isToday ? "700" : "400",
+              }}
+            >
+              {b.label}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function StatsScreen() {
   const insets = useSafeAreaInsets();
@@ -483,6 +559,9 @@ export default function StatsScreen() {
             </View>
           </View>
 
+          <View style={[s.card, { marginHorizontal: 16, marginBottom: 16 }]}>
+            <FocusWeekChart />
+          </View>
           <HealthSection />
 
           {/* ── GESAMT ÜBERSICHT ── */}

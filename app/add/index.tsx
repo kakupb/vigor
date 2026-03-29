@@ -3,6 +3,7 @@ import { CategoryIcon } from "@/components/categories/CategoryIcon";
 import { SchedulePicker } from "@/components/habits/SchedulePicker";
 import { CategorySelector } from "@/components/planner/CategorySelector";
 import { getCategoryConfig } from "@/constants/categories";
+import { useCustomCategoryStore } from "@/store/customCategoryStore";
 import { useHabitStore } from "@/store/habitStore";
 import { HabitSchedule, scheduleLabel } from "@/types/habit";
 import { PlannerCategory } from "@/types/planner";
@@ -33,13 +34,37 @@ export default function AddHabitScreen() {
   const insets = useSafeAreaInsets();
   const addHabit = useHabitStore((s) => s.addHabit);
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState<PlannerCategory>("other");
   const [kind, setKind] = useState<"boolean" | "count">("boolean");
   const [unit, setUnit] = useState("");
   const [dailyTarget, setDailyTarget] = useState("1");
   const [schedule, setSchedule] = useState<HabitSchedule>(DEFAULT_SCHEDULE);
   const [isSaving, setIsSaving] = useState(false);
-  const cfg = getCategoryConfig(category);
+  const [category, setCategory] = useState<PlannerCategory>("other");
+  const [customCategoryId, setCustomCategoryId] = useState<
+    string | undefined
+  >(); // ← VOR Verwendung
+
+  // Jetzt erst verwenden:
+  const customCats = useCustomCategoryStore((s) => s.categories);
+  const customCat = customCats.find((c) => c.id === customCategoryId);
+  const cfg = customCat
+    ? {
+        ...getCategoryConfig("other"),
+        color: customCat.color,
+        label: customCat.label,
+        lightColor: customCat.color + "20",
+      }
+    : getCategoryConfig(category);
+
+  // Effektive Config — überschreibt "other" wenn Custom-Kategorie aktiv:
+  const effectiveConfig = customCat
+    ? {
+        ...getCategoryConfig("other"),
+        color: customCat.color,
+        label: customCat.label,
+        lightColor: customCat.color + "20",
+      }
+    : getCategoryConfig(category);
 
   function handleSave() {
     if (!title.trim()) {
@@ -63,7 +88,8 @@ export default function AddHabitScreen() {
       category,
       kind === "count" ? unit.trim() : undefined,
       kind === "count" ? Number(dailyTarget) : undefined,
-      schedule
+      schedule,
+      customCategoryId // ← NEU, letzter Parameter
     );
     router.back();
   }
@@ -194,8 +220,11 @@ export default function AddHabitScreen() {
         <View style={s.card}>
           <Text style={s.label}>Kategorie</Text>
           <CategorySelector
-            selected={category}
-            onSelect={(cat) => setCategory(cat ?? "other")}
+            selected={customCategoryId ?? category}
+            onSelect={(cat, customId) => {
+              setCategory(cat ?? "other");
+              setCustomCategoryId(customId);
+            }}
             horizontal={false}
           />
         </View>

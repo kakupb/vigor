@@ -43,14 +43,15 @@ export type Habit = {
   id: string;
   title: string;
   kind: HabitKind;
+  category?: PlannerCategory;
+  customCategoryId?: string; // ← NEU
   unit?: string;
   dailyTarget?: number;
-  createdAt: number;
-  completedDates: number[]; // Timestamps (Tagesbeginn) der Erledigungen
-  completedAmounts?: Record<number, number>;
-  category?: PlannerCategory;
   frequency?: HabitFrequency;
-  schedule?: HabitSchedule; // Zeitplan — einzige Scheduling-Quelle
+  schedule?: HabitSchedule;
+  completedDates: number[];
+  completedAmounts: Record<number, number>;
+  createdAt: number;
 };
 
 // ─────────────────────────────────────────────

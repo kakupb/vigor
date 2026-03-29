@@ -7,6 +7,7 @@ import {
   SOUND_FILES,
   useFocusStore,
 } from "@/store/focusStore";
+import { SessionStatus } from "@/types/focus";
 import { PlannerEntry } from "@/types/planner";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
@@ -109,7 +110,8 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
 
         if (!visible || !soundEnabled || selectedSound === "none") return;
 
-        const file = SOUND_FILES[selectedSound];
+        const file = SOUND_FILES[selectedSound]();
+
         if (!file) return;
 
         const { sound } = await Audio.Sound.createAsync(file, {
@@ -344,8 +346,18 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
     const ps = pomodoroStateRef.current;
     const t0 = actualStartTimeRef.current ?? Date.now();
     const dur = Math.floor((Date.now() - t0) / 1000);
+    const pomSt = pomodoroStateRef.current;
+    const workMinutesPerCycle = pomodoroConfig.workMinutes;
+    const completedCycles = ps.completedPomodoros;
+    const workSec = pomodoroConfig.workMinutes * 60;
+    // Fokuszeit = abgeschlossene Zyklen + aktuelle Work-Phase (wenn nicht in Pause)
+    const currentPhaseFocusSec = ps.isBreak
+      ? 0
+      : Math.max(0, workSec - ps.timeRemaining);
+    const focusSeconds = completedCycles * workSec + currentPhaseFocusSec;
+    const status: SessionStatus =
+      completedCycles > 0 ? "complete" : "interrupted";
 
-    // Nur Sessions >= 60 Sekunden speichern
     if (dur >= 60) {
       addSessionRef.current({
         id: Crypto.randomUUID(),
@@ -355,8 +367,10 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
         entryTitle: entry?.title,
         category: entry?.category,
         durationSeconds: dur,
-        completed: true,
-        pomodoroCount: ps.completedPomodoros,
+        focusSeconds,
+        status,
+        completed: status === "complete",
+        pomodoroCount: completedCycles,
       });
     }
 

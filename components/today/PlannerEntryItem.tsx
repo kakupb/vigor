@@ -1,6 +1,6 @@
 // components/today/PlannerEntryItem.tsx
-import { getCategoryConfig } from "@/constants/categories";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useCategoryConfig } from "@/hooks/useCategoryConfig";
 import { PlannerEntry } from "@/types/planner";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -17,7 +17,10 @@ export function PlannerEntryItem({
 }: PlannerEntryItemProps) {
   const dark = useColorScheme() === "dark";
   const isDone = !!entry.doneAt;
-  const categoryConfig = getCategoryConfig(entry.category);
+  const categoryConfig = useCategoryConfig(
+    entry.category,
+    entry.customCategoryId
+  );
   const isAnytime = !entry.startTime;
 
   const timeLabel = entry.startTime

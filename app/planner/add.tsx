@@ -2,6 +2,7 @@
 import { CategorySelector } from "@/components/planner/CategorySelector";
 import { DateTimeField } from "@/components/planner/DateTimeField";
 import { getCategoryConfig } from "@/constants/categories";
+import { useCustomCategoryStore } from "@/store/customCategoryStore";
 import { usePlannerStore } from "@/store/plannerStore";
 import { PlannerCategory } from "@/types/planner";
 import { dateToLocalString, minutesToTime } from "@/utils/dateUtils";
@@ -50,6 +51,21 @@ export default function PlannerAddScreen() {
   const [category, setCategory] = useState<PlannerCategory | undefined>(
     undefined
   );
+  const [customCategoryId, setCustomCategoryId] = useState<
+    string | undefined
+  >(); // ← VOR Verwendung
+
+  // Jetzt erst:
+  const customCats = useCustomCategoryStore((s) => s.categories);
+  const customCat = customCats.find((c) => c.id === customCategoryId);
+  const effectiveConfig = customCat
+    ? {
+        ...getCategoryConfig("other"),
+        color: customCat.color,
+        label: customCat.label,
+        lightColor: customCat.color + "20",
+      }
+    : getCategoryConfig(category);
 
   const [selectedStartDate, setSelectedStartDate] = useState(initialDate);
   const [startMinutes, setStartMinutes] = useState(() => {
@@ -105,7 +121,7 @@ export default function PlannerAddScreen() {
     setDurationMinutes(dur);
   }
 
-  const color = getCategoryConfig(category).color;
+  const color = effectiveConfig.color;
   const canSave = title.trim().length > 0;
 
   function handleSave() {
@@ -123,6 +139,7 @@ export default function PlannerAddScreen() {
       durationMinute: allDay ? undefined : durationMinutes,
       note: note.trim() || undefined,
       category,
+      customCategoryId, // ← NEU
     });
     router.back();
   }
@@ -179,7 +196,14 @@ export default function PlannerAddScreen() {
         {/* Kategorie */}
         <View style={s.card}>
           <Text style={s.label}>Kategorie</Text>
-          <CategorySelector selected={category} onSelect={setCategory} />
+          <CategorySelector
+            selected={customCategoryId ?? category}
+            onSelect={(cat, customId) => {
+              setCategory(cat ?? "other");
+              setCustomCategoryId(customId);
+            }}
+            horizontal={false}
+          />
         </View>
 
         {/* Zeit */}

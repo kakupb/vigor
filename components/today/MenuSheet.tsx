@@ -1,6 +1,7 @@
 // components/today/MenuSheet.tsx
 // Hauptmenü — Logout + Konto dauerhaft löschen (DSGVO + App Store Pflicht)
 import { WorkoutHistoryModal } from "@/components/stats/WorkoutHistoryModal";
+import { useAppColors } from "@/hooks/useAppColors";
 import { useAuthStore } from "@/store/authStore";
 import { useHabitStore } from "@/store/habitStore";
 import { useNoteStore } from "@/store/noteStore";
@@ -24,6 +25,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+// In der MenuSheet-Funktion, ganz oben:
 // ─── FAQ ─────────────────────────────────────────────────────────────────────
 const FAQ = [
   {
@@ -119,6 +121,7 @@ interface Props {
 
 export function MenuSheet({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
+  const c = useAppColors(); // ← das fehlt
   const { name, setName } = useUserStore();
   const { signOut, deleteAccount, user } = useAuthStore();
   const habits = useHabitStore((s) => s.habits);
@@ -297,7 +300,7 @@ export function MenuSheet({ visible, onClose }: Props) {
   // ── Hauptmenü ─────────────────────────────────────────────────────────────
   const displayName = name && name !== "_onboarded" ? name : null;
   const initials = displayName ? displayName.charAt(0).toUpperCase() : "?";
-
+  const { prefs, updatePrefs } = useUserStore();
   return (
     <>
       <Modal
@@ -577,6 +580,40 @@ const s = StyleSheet.create({
     backgroundColor: "#3b8995",
     alignItems: "center",
     justifyContent: "center",
+  },
+  cardTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  row: {
+    marginBottom: 12,
+  },
+  rowLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+    marginBottom: 8,
+  },
+  stepperRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  goalChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8f9fb",
+  },
+  goalChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748b",
   },
 });
 

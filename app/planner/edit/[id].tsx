@@ -1,6 +1,8 @@
 // app/planner/edit/[id].tsx
 import { CategorySelector } from "@/components/planner/CategorySelector";
 import { DateTimeField } from "@/components/planner/DateTimeField";
+import { getCategoryConfig } from "@/constants/categories";
+import { useCustomCategoryStore } from "@/store/customCategoryStore";
 import { usePlannerStore } from "@/store/plannerStore";
 import { PlannerCategory } from "@/types/planner";
 import {
@@ -41,6 +43,21 @@ export default function PlannerEditScreen() {
   const [category, setCategory] = useState<PlannerCategory | undefined>(
     entry?.category
   );
+  const [customCategoryId, setCustomCategoryId] = useState<string | undefined>(
+    entry?.customCategoryId // ← VOR Verwendung, mit initialem Wert aus Entry
+  );
+
+  // Jetzt erst verwenden:
+  const customCats = useCustomCategoryStore((s) => s.categories);
+  const customCat = customCats.find((c) => c.id === customCategoryId);
+  const effectiveConfig = customCat
+    ? {
+        ...getCategoryConfig("other"),
+        color: customCat.color,
+        label: customCat.label,
+        lightColor: customCat.color + "20",
+      }
+    : getCategoryConfig(category);
 
   const [selectedStartDate, setSelectedStartDate] = useState(
     entry?.date ?? dateToLocalString(new Date())
@@ -95,6 +112,7 @@ export default function PlannerEditScreen() {
 
   const canSave = title.trim().length > 0;
 
+  // handleSave:
   function handleSave() {
     if (!canSave) {
       Alert.alert("Titel fehlt", "Bitte gib einen Titel ein.");
@@ -102,13 +120,14 @@ export default function PlannerEditScreen() {
     }
     updateEntry(id, {
       title: title.trim(),
-      date: selectedStartDate,
+      date: selectedStartDate ?? dateToLocalString(new Date()), // ← Fallback
       startTime: allDay ? undefined : minutesToTime(startMinutes),
       endTime: allDay ? undefined : minutesToTime(endMinutes),
       endDate: allDay ? undefined : selectedEndDate,
       durationMinute: allDay ? undefined : durationMinutes,
       note: note.trim() || undefined,
       category,
+      customCategoryId,
     });
     router.back();
   }
@@ -182,7 +201,14 @@ export default function PlannerEditScreen() {
         {/* Kategorie */}
         <View style={s.card}>
           <Text style={s.label}>Kategorie</Text>
-          <CategorySelector selected={category} onSelect={setCategory} />
+          <CategorySelector
+            selected={customCategoryId ?? category}
+            onSelect={(cat, customId) => {
+              setCategory(cat ?? "other");
+              setCustomCategoryId(customId);
+            }}
+            horizontal={false}
+          />
         </View>
 
         {/* Zeit */}

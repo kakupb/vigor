@@ -59,7 +59,8 @@ export function MonthDayCell({
               style={[
                 styles.entryBadge,
                 {
-                  backgroundColor: getCategoryConfig(entry.category).color,
+                  backgroundColor:
+                    entry.color ?? getCategoryConfig(entry.category).color,
                 },
               ]}
             >

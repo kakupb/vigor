@@ -1,6 +1,6 @@
 // components/planner/AnytimeStrip.tsx
-import { getCategoryConfig } from "@/constants/categories";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useCategoryConfig } from "@/hooks/useCategoryConfig";
 import { PlannerEntry } from "@/types/planner";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
@@ -30,7 +30,8 @@ export function AnytimeStrip({
       >
         {entries.map((entry) => {
           const done = !!entry.doneAt;
-          const categoryColor = getCategoryConfig(entry.category).color;
+          const cfg = useCategoryConfig(entry.category, entry.customCategoryId);
+          const categoryColor = cfg.color;
 
           return (
             <Pressable

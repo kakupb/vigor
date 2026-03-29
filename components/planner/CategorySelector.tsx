@@ -10,7 +10,7 @@ import { useCustomCategoryStore } from "@/store/customCategoryStore";
 import { PlannerCategory } from "@/types/planner";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 type CategorySelectorProps = {
@@ -26,15 +26,25 @@ export function CategorySelector({
 }: CategorySelectorProps) {
   const c = useAppColors();
   const { renderIcon } = useCategoryIcon();
-  const { categories: customCats, load } = useCustomCategoryStore();
   const [createVisible, setCreateVisible] = useState(false);
+  const {
+    categories: customCats,
+    load,
+    incrementUsage,
+  } = useCustomCategoryStore();
 
+  const sortedCustomCats = useMemo(
+    () =>
+      [...customCats].sort((a, b) => (b.usageCount ?? 0) - (a.usageCount ?? 0)),
+    [customCats]
+  );
   useEffect(() => {
     load();
   }, []);
 
   function handleSelect(catId: PlannerCategory | undefined, customId?: string) {
     Haptics.selectionAsync();
+    if (customId) incrementUsage(customId);
     onSelect(catId, customId);
   }
 
@@ -130,7 +140,25 @@ export function CategorySelector({
                     },
               ]}
             >
-              <Text style={{ fontSize: 13 }}>{cat.emoji}</Text>
+              {(() => {
+                const ico = cat.emoji; // z.B. "ion:star-outline", "emoji:🎯", "text:AB"
+                if (ico.startsWith("ion:")) {
+                  return (
+                    <Ionicons
+                      name={ico.slice(4) as any}
+                      size={14}
+                      color={isSelected ? "#fff" : cat.color}
+                    />
+                  );
+                }
+                if (ico.startsWith("emoji:") || ico.startsWith("text:")) {
+                  return (
+                    <Text style={{ fontSize: 13 }}>{ico.split(":")[1]}</Text>
+                  );
+                }
+                // Fallback: als Emoji behandeln
+                return <Text style={{ fontSize: 13 }}>{ico}</Text>;
+              })()}
               <Text
                 style={[
                   s.chipText,

@@ -4,9 +4,18 @@
 
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFocusStore } from "@/store/focusStore";
+import { FocusTime, useUserStore } from "@/store/userStore";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Props = { visible: boolean; onClose: () => void };
@@ -84,6 +93,26 @@ export function PomodoroSettingsSheet({ visible, onClose }: Props) {
       setConfig({ ...config, [key]: next });
     }
   }
+  const { prefs, updatePrefs } = useUserStore();
+  const [minutesInput, setMinutesInput] = useState(
+    String(prefs.dailyFocusMinutes)
+  );
+
+  function handleMinutesBlur() {
+    const val = parseInt(minutesInput, 10);
+    if (!isNaN(val) && val >= 5 && val <= 480) {
+      updatePrefs({ dailyFocusMinutes: val });
+    } else {
+      // Ungültige Eingabe → zurücksetzen
+      setMinutesInput(String(prefs.dailyFocusMinutes));
+    }
+  }
+  // useEffect ergänzen:
+  useEffect(() => {
+    if (visible) {
+      setMinutesInput(String(prefs.dailyFocusMinutes));
+    }
+  }, [visible]);
 
   return (
     <Modal
@@ -191,6 +220,132 @@ export function PomodoroSettingsSheet({ visible, onClose }: Props) {
               </View>
             );
           })}
+          {/* ── Tagesziel ── */}
+          <View
+            style={[
+              s.row,
+              {
+                backgroundColor: c.dark ? "#1e293b" : "#f8f9fb",
+                borderColor: c.borderDefault,
+              },
+            ]}
+          >
+            <View
+              style={[
+                s.iconWrap,
+                { backgroundColor: c.dark ? "#334155" : "#e2e8f0" },
+              ]}
+            >
+              <Ionicons name="flag-outline" size={18} color={c.textSecondary} />
+            </View>
+
+            <View style={s.labelCol}>
+              <Text style={[s.label, { color: c.textPrimary }]}>Tagesziel</Text>
+              <Text style={[s.sub, { color: c.textMuted }]}>
+                Minuten pro Tag
+              </Text>
+            </View>
+
+            <View style={s.stepper}>
+              <TextInput
+                value={minutesInput}
+                onChangeText={setMinutesInput}
+                onBlur={handleMinutesBlur}
+                keyboardType="number-pad"
+                returnKeyType="done"
+                onSubmitEditing={handleMinutesBlur}
+                style={[
+                  s.stepValue,
+                  {
+                    color: "#3b8995",
+                    minWidth: 58,
+                    textAlign: "center",
+                    borderWidth: 1,
+                    borderColor: c.borderDefault,
+                    borderRadius: 8,
+                    paddingVertical: 4,
+                    paddingHorizontal: 8,
+                    backgroundColor: c.dark ? "#0f172a" : "#fff",
+                  },
+                ]}
+                maxLength={3}
+              />
+              <Text style={[s.sub, { color: c.textMuted, marginLeft: 4 }]}>
+                Min
+              </Text>
+            </View>
+          </View>
+
+          {/* ── Fokus-Uhrzeit ── */}
+          <View
+            style={[
+              s.row,
+              {
+                backgroundColor: c.dark ? "#1e293b" : "#f8f9fb",
+                borderColor: c.borderDefault,
+              },
+            ]}
+          >
+            <View
+              style={[
+                s.iconWrap,
+                { backgroundColor: c.dark ? "#334155" : "#e2e8f0" },
+              ]}
+            >
+              <Ionicons name="time-outline" size={18} color={c.textSecondary} />
+            </View>
+
+            <View style={s.labelCol}>
+              <Text style={[s.label, { color: c.textPrimary }]}>
+                Fokus-Zeit
+              </Text>
+              <Text style={[s.sub, { color: c.textMuted }]}>
+                Wann fokussierst du am besten?
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              {(["morning", "afternoon", "evening"] as FocusTime[]).map((t) => {
+                const labels = {
+                  morning: "Früh",
+                  afternoon: "Mittag",
+                  evening: "Abend",
+                };
+                const active = prefs.preferredTime === t;
+                return (
+                  <Pressable
+                    key={t}
+                    onPress={() => {
+                      updatePrefs({ preferredTime: t });
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    style={{
+                      paddingVertical: 5,
+                      paddingHorizontal: 10,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: active ? "#3b8995" : c.borderDefault,
+                      backgroundColor: active
+                        ? "#3b8995"
+                        : c.dark
+                        ? "#0f172a"
+                        : "#fff",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: "600",
+                        color: active ? "#fff" : c.textSecondary,
+                      }}
+                    >
+                      {labels[t]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
 
           {/* Zusammenfassung */}
           <View

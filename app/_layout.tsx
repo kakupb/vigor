@@ -1,10 +1,15 @@
 // app/_layout.tsx
 const DEV_BYPASS = __DEV__ && true;
 
+import { scheduleStreakAtRiskReminder } from "@/services/notificationService";
 import { useAuthStore } from "@/store/authStore";
 import { useFocusStore } from "@/store/focusStore";
+import { useHabitStore } from "@/store/habitStore";
 import { useHealthMetricsStore } from "@/store/healthMetricsStore";
 import { useUserStore } from "@/store/userStore";
+import { getTodayTimestamp } from "@/utils/dateUtils";
+import { getStreak } from "@/utils/getStreak";
+import { isScheduledForToday } from "@/utils/scheduleUtils";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -14,12 +19,32 @@ LogBox.ignoreLogs([
   "com.apple.healthkit Code=5",
   "Authorization not determined",
 ]);
-
 function AuthGuard() {
   const { isAuthReady, session } = useAuthStore();
   const router = useRouter();
   const segments = useSegments() as string[];
 
+  // ── Streak-at-Risk: einmalig beim Mount ──────────────────────────────────
+  useEffect(() => {
+    const habits = useHabitStore.getState().habits;
+    const { name } = useUserStore.getState();
+    const todayOpen = habits
+      .filter((h) => isScheduledForToday(h.schedule))
+      .filter((h) => !h.completedDates.includes(getTodayTimestamp()));
+    if (todayOpen.length > 0) {
+      const top = todayOpen.reduce(
+        (a, b) => (getStreak(b) > getStreak(a) ? b : a),
+        todayOpen[0]
+      );
+      scheduleStreakAtRiskReminder({
+        userName: name,
+        habitTitle: top.title,
+        streak: getStreak(top),
+      });
+    }
+  }, []); // ← leeres Array: nur einmal
+
+  // ── Auth-Navigation: eigener Effect ─────────────────────────────────────
   useEffect(() => {
     if (DEV_BYPASS) {
       const inAuthGroup = segments[0] === "(auth)";

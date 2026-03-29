@@ -29,12 +29,12 @@ async function toRow(e: PlannerEntry) {
     end_time: e.endTime ?? null,
     duration_minute: e.durationMinute ?? null,
     category: e.category ?? null,
+    custom_category_id: e.customCategoryId ?? null, // ← muss da sein
     note: e.note ?? null,
     done_at: e.doneAt ?? null,
   };
 }
 
-// ─── Mapping: Supabase row → PlannerEntry ────────────────────────────────────
 function fromRow(r: any): PlannerEntry {
   return {
     id: r.id,
@@ -45,6 +45,7 @@ function fromRow(r: any): PlannerEntry {
     endTime: r.end_time ?? undefined,
     durationMinute: r.duration_minute ?? undefined,
     category: sanitizeCategory(r.category),
+    customCategoryId: r.custom_category_id ?? undefined, // ← NEU
     note: r.note ?? undefined,
     doneAt: r.done_at ?? undefined,
     createdAt: new Date(r.created_at).getTime(),
@@ -81,6 +82,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       id: Crypto.randomUUID(),
       createdAt: Date.now(),
       ...normalized,
+      customCategoryId: input.customCategoryId, // ← explizit
       doneAt: input.doneAt,
     };
     const updated = [...get().entries, newEntry];
@@ -91,7 +93,9 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   updateEntry: (id, input) => {
     const normalized = plannerService.normalizeEntry(input);
     const updated = get().entries.map((e) =>
-      e.id === id ? { ...e, ...normalized } : e
+      e.id === id
+        ? { ...e, ...normalized, customCategoryId: input.customCategoryId } // ← explizit
+        : e
     );
     set({ entries: updated });
     const changed = updated.find((e) => e.id === id)!;
@@ -100,7 +104,9 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
   toggleDone: (id) => {
     const updated = get().entries.map((e) =>
-      e.id !== id ? e : { ...e, doneAt: e.doneAt ? undefined : Date.now() }
+      e.id !== id
+        ? e
+        : { ...e, doneAt: e.doneAt ? undefined : new Date().toISOString() }
     );
     set({ entries: updated });
     const changed = updated.find((e) => e.id === id)!;

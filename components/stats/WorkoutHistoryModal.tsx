@@ -731,7 +731,7 @@ export function WorkoutHistoryModal({ visible, onClose }: Props) {
         <View style={s.header}>
           <Pressable onPress={onClose} style={s.backBtn} hitSlop={8}>
             <Ionicons name="chevron-back" size={20} color="#3b8995" />
-            <Text style={s.backText}>Zurueck</Text>
+            <Text style={s.backText}>Zurück</Text>
           </Pressable>
           <Text style={s.headerTitle}>Trainings-Verlauf</Text>
           <View style={{ width: 80 }} />

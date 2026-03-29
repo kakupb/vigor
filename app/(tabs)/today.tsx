@@ -92,6 +92,7 @@ export default function TodayScreen() {
         dailyTarget={habit.dailyTarget}
         category={habit.category}
         todayAmount={todayAmount}
+        customCategoryId={habit.customCategoryId}
         onToggle={() => habitActions.toggleCheckIn(habit.id)}
         onDelete={() => habitActions.deleteHabit(habit.id)}
         onDetail={() => router.push(`/habit/${habit.id}`)}

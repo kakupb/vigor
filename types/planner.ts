@@ -14,39 +14,30 @@ export type PlannerCategory =
 export type PlannerEntry = {
   id: string;
   title: string;
-  date: string; // YYYY-MM-DD
-
-  // Zeit-Felder (optional für "ganztägig")
-  // WICHTIG: Diese 3 müssen immer synchron sein!
-  startTime?: string; // HH:MM
-  durationMinute?: number; // Minuten
-  endDate?: string; // YYYY-MM-DD (wenn über Mitternacht)
-  endTime?: string; // HH:MM
-
-  // Metadata
+  date: string;
+  endDate?: string;
+  startTime?: string;
+  endTime?: string;
+  durationMinute?: number;
   category?: PlannerCategory;
-  habitId?: string;
-  note?: string;
+  customCategoryId?: string; // ← NEU
   color?: string;
-
-  // Status
-  doneAt?: number;
+  note?: string;
+  doneAt?: string;
   createdAt: number;
 };
 
 export type AddEntryInput = {
   title: string;
   date: string;
-
-  // User kann ENTWEDER Duration ODER End angeben
-  startTime?: string;
-  durationMinute?: number;
   endDate?: string;
+  startTime?: string;
   endTime?: string;
-
+  durationMinute?: number;
   category?: PlannerCategory;
-  habitId?: string;
-  note?: string;
+  customCategoryId?: string; // ← NEU
   color?: string;
-  doneAt?: number;
+  note?: string;
+  doneAt?: string;
+  habitId?: string;
 };
