@@ -8,7 +8,7 @@ const FOLLY_FIX =
 // Fix 1: FOLLY_HAS_COROUTINES für alle .cpp Dateien
 function patchFolly(filePath) {
   if (!fs.existsSync(filePath)) return;
-  const content = fs.readFileSync(filePath, "utf8");
+  let content = fs.readFileSync(filePath, "utf8");
   if (content.includes("withFollyCoroutineFix")) return;
   fs.writeFileSync(filePath, FOLLY_FIX + content);
   console.log("[patch] Folly fix:", path.basename(filePath));
@@ -23,52 +23,63 @@ function patchDir(dir) {
   }
 }
 
-// Fix 2: shadowTreeDidMount Signatur — RN 0.81.5 hat double mountTime entfernt
-function patchMountHook(reanimatedDir) {
+// Fix 2: ReanimatedMountHook — shadowTreeDidMount Inkompatibilität mit RN 0.81.5
+// Das .h deklariert override, aber die Basisklasse hat die Signatur geändert.
+// Lösung: 'override' entfernen + beide Signaturen vereinheitlichen (kein double Parameter)
+function patchMountHook(cppDir) {
   const headerPath = path.join(
-    reanimatedDir,
+    cppDir,
     "reanimated/Fabric/ReanimatedMountHook.h"
   );
   const cppPath = path.join(
-    reanimatedDir,
+    cppDir,
     "reanimated/Fabric/ReanimatedMountHook.cpp"
   );
 
+  // --- Header ---
   if (fs.existsSync(headerPath)) {
     let content = fs.readFileSync(headerPath, "utf8");
     const before = content;
-    // Entferne ", double mountTime" aus dem Funktionsparameter
+
+    // Ersetze komplette shadowTreeDidMount Deklaration (mit oder ohne double mountTime)
+    // durch Version ohne 'override' und ohne double Parameter
     content = content.replace(
-      /,\s*\n(\s*)double mountTime(\s*\)\s*noexcept\s*override)/g,
-      "$2"
+      /void shadowTreeDidMount\([^)]*\)\s*noexcept\s*override\s*;/gs,
+      "void shadowTreeDidMount(\n      RootShadowNode::Shared const &rootShadowNode) noexcept;"
     );
-    content = content.replace(
-      /,\s*double mountTime(\s*\)\s*noexcept\s*override)/g,
-      "$1"
-    );
+
     if (content !== before) {
       fs.writeFileSync(headerPath, content);
-      console.log("[patch] Fixed ReanimatedMountHook.h");
+      console.log("[patch] Fixed ReanimatedMountHook.h (removed override)");
+    } else {
+      console.log(
+        "[patch] ReanimatedMountHook.h: no change (already patched or pattern not found)"
+      );
     }
   }
 
+  // --- CPP ---
   if (fs.existsSync(cppPath)) {
     let content = fs.readFileSync(cppPath, "utf8");
     const before = content;
-    // Entferne ", double mountTime" aus der Implementierung
+
+    // Ersetze komplette shadowTreeDidMount Definition (mit oder ohne double)
+    // durch Signatur ohne double Parameter — matcht .h
     content = content.replace(
-      /,\s*\n(\s*)double mountTime(\s*\)\s*noexcept\s*\{)/g,
-      "$2"
+      /void ReanimatedMountHook::shadowTreeDidMount\([^)]*\)\s*noexcept\s*\{/gs,
+      "void ReanimatedMountHook::shadowTreeDidMount(\n    RootShadowNode::Shared const &rootShadowNode) noexcept {"
     );
-    content = content.replace(
-      /,\s*double mountTime(\s*\)\s*noexcept\s*\{)/g,
-      "$1"
-    );
-    // mountTime Variable durch 0.0 ersetzen falls noch verwendet
+
+    // Falls mountTime noch als Variable im Body vorkommt, durch 0.0 ersetzen
     content = content.replace(/\bmountTime\b/g, "0.0");
+
     if (content !== before) {
       fs.writeFileSync(cppPath, content);
       console.log("[patch] Fixed ReanimatedMountHook.cpp");
+    } else {
+      console.log(
+        "[patch] ReanimatedMountHook.cpp: no change (already patched or pattern not found)"
+      );
     }
   }
 }
