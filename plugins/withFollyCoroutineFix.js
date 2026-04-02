@@ -7,40 +7,50 @@ const withFollyCoroutineFix = (config) => {
     "ios",
     (config) => {
       const iosDir = config.modRequest.platformProjectRoot;
-
-      // 1. Erstelle folly/coro/Coroutine.h Stub
-      const follyCoroDir = path.join(iosDir, "folly", "coro");
-      fs.mkdirSync(follyCoroDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(follyCoroDir, "Coroutine.h"),
-        "#pragma once\n"
-      );
-
-      // 2. Modifiziere Podfile: füge -I Flag für RNReanimated hinzu
       const podfilePath = path.join(iosDir, "Podfile");
       let podfile = fs.readFileSync(podfilePath, "utf8");
 
-      // Idempotenz-Check
-      if (podfile.includes("withFollyCoroutineFix")) return config;
+      if (podfile.includes("withFollyCoroutineFix")) {
+        return config; // Already applied
+      }
 
-      const fix = `
-    # withFollyCoroutineFix: ios/folly/coro/Coroutine.h stub
-    _ios_root = File.expand_path(__dir__)
-    installer.pods_project.targets.each do |target|
-      next unless target.name == 'RNReanimated'
-      target.build_configurations.each do |cfg|
-        cfg.build_settings['OTHER_CPLUSPLUSFLAGS'] = "$(inherited) -I\#{_ios_root}"
-      end
-    end
-`;
+      // Ruby code to insert into post_install
+      // Uses build phase script (runs AFTER [RNDeps], BEFORE compile)
+      // AND sets FOLLY_HAS_COROUTINES=0 as compiler flag
+      const fix = [
+        "",
+        "    # withFollyCoroutineFix: create folly/coro/Coroutine.h stub",
+        "    installer.pods_project.targets.each do |_target|",
+        "      next unless _target.name == 'RNReanimated'",
+        "      _phase = _target.new_shell_script_build_phase('Fix Folly Coro Header')",
+        "      _phase.shell_script = 'CORO_DIR=\"${PODS_ROOT}/Headers/Public/ReactNativeDependencies/folly/coro\" && mkdir -p \"${CORO_DIR}\" && printf '\\''#pragma once\\n'\\'' > \"${CORO_DIR}/Coroutine.h\"'",
+        "      _target.build_phases.delete(_phase)",
+        "      _target.build_phases.unshift(_phase)",
+        "      _target.build_configurations.each do |_cfg|",
+        "        _cfg.build_settings['OTHER_CPLUSPLUSFLAGS'] = '$(inherited) -DFOLLY_HAS_COROUTINES=0 -DFOLLY_CFG_NO_COROUTINES=1'",
+        "      end",
+        "    end",
+      ].join("\n");
 
-      // Einfügen vor dem letzten 'end' des post_install Blocks
-      podfile = podfile.replace(
-        /(\n  end\n\nend\s*)$/,
-        `\n${fix}\n  end\n\nend\n`
-      );
+      // Find the last "  end" followed by blank line + "end" (close of post_install + target)
+      // Use lastIndexOf for reliability
+      const marker = "\n  end\n\nend";
+      const lastIdx = podfile.lastIndexOf(marker);
 
-      fs.writeFileSync(podfilePath, podfile);
+      if (lastIdx !== -1) {
+        podfile = podfile.slice(0, lastIdx) + fix + "\n  end\n\nend\n";
+        fs.writeFileSync(podfilePath, podfile);
+        console.log("[withFollyCoroutineFix] Podfile patched successfully");
+      } else {
+        console.warn(
+          "[withFollyCoroutineFix] Could not find insertion point in Podfile!"
+        );
+        console.warn(
+          "[withFollyCoroutineFix] Podfile ends with:",
+          JSON.stringify(podfile.slice(-100))
+        );
+      }
+
       return config;
     },
   ]);
