@@ -59,10 +59,9 @@ target 'Vigor' do
     installer.pods_project.targets.each do |target|
       if target.name == 'RNReanimated'
         target.build_configurations.each do |config|
-          # ios/folly/coro/Coroutine.h ist im git-repo (mit -f hinzugefügt)
-          # $(SRCROOT) = ios/Pods, $(SRCROOT)/.. = ios/
-          # -I fügt ios/ als Include-Pfad hinzu → findet folly/coro/Coroutine.h
-          config.build_settings['OTHER_CPLUSPLUSFLAGS'] = '$(inherited) -I"$(SRCROOT)/.."'
+          # Absoluter Pfad zur ios/ directory (zur pod install Zeit bekannt)
+          ios_dir = File.expand_path(__dir__)
+          config.build_settings['OTHER_CPLUSPLUSFLAGS'] = "$(inherited) -I#{ios_dir}"
         end
       end
     end
