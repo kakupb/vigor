@@ -121,21 +121,29 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   },
 
   loadEntries: async () => {
-    // 1. Lokal (sofort)
     const local = await storage.planner.load();
 
-    // 2. Cloud
     const cloud = await syncLoad<PlannerEntry>("planner_entries", fromRow);
 
     if (cloud && cloud.length > 0) {
-      set({ entries: cloud });
-      storage.planner.save(cloud);
+      // Local-Map für Fallback
+      const localMap = new Map((local ?? []).map((e: any) => [e.id, e]));
+
+      // customCategoryId aus lokal retten falls Cloud-Spalte fehlt
+      const merged = cloud.map((e) => ({
+        ...e,
+        customCategoryId:
+          e.customCategoryId ?? localMap.get(e.id)?.customCategoryId,
+      }));
+
+      set({ entries: merged });
+      storage.planner.save(merged);
       return;
     }
 
-    // 3. Lokale Daten normalisieren & zu Supabase migrieren
+    // Lokale Daten — rest bleibt unverändert
     if (local && local.length > 0) {
-      const normalized = local.map((e) => ({
+      const normalized = local.map((e: any) => ({
         ...e,
         createdAt: e.createdAt ?? Date.now(),
         category: sanitizeCategory(e.category),

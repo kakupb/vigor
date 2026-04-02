@@ -8,7 +8,7 @@
 //
 import { HealthSection } from "@/components/stats/HealthSection";
 import { StatsEmptyState } from "@/components/stats/StatsEmptyState";
-import { getCategoryConfig } from "@/constants/categories";
+import { useCategoryConfig } from "@/hooks/useCategoryConfig";
 import { useHabits } from "@/hooks/useHabits";
 import { useFocusStore } from "@/store/focusStore";
 import { usePlannerStore } from "@/store/plannerStore";
@@ -309,6 +309,55 @@ function FocusWeekChart() {
     </View>
   );
 }
+
+function StreakRow({
+  habit,
+  streak,
+  longestStreak,
+}: {
+  habit: any;
+  streak: number;
+  longestStreak: number;
+}) {
+  const cfg = useCategoryConfig(habit.category, habit.customCategoryId);
+  const rate30 = getCompletionRate(habit, 30);
+
+  return (
+    <View style={s.streakRow}>
+      <View style={[s.streakDot, { backgroundColor: cfg.color }]} />
+      <View style={{ flex: 1 }}>
+        <Text style={s.streakHabitName} numberOfLines={1}>
+          {habit.title}
+        </Text>
+        <View style={s.streakBarTrack}>
+          <View
+            style={[
+              s.streakBarFill,
+              { width: `${rate30}%`, backgroundColor: cfg.color },
+            ]}
+          />
+        </View>
+        <Text style={s.streakRate}>{rate30}% letzte 30 Tage</Text>
+      </View>
+      <View style={s.streakNums}>
+        <View style={s.streakNumItem}>
+          <Text style={s.streakNumValue}>
+            <MaterialCommunityIcons name="fire" size={14} color="#F74920" />{" "}
+            {streak ?? 0}
+          </Text>
+          <Text style={s.streakNumLabel}>aktuell</Text>
+        </View>
+        <View style={s.streakNumItem}>
+          <Text style={[s.streakNumValue, { color: "#8b5cf6" }]}>
+            {longestStreak ?? 0}
+          </Text>
+          <Text style={s.streakNumLabel}>best</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function StatsScreen() {
   const insets = useSafeAreaInsets();
@@ -509,50 +558,14 @@ export default function StatsScreen() {
           <View style={s.card}>
             <Text style={s.cardTitle}>Streaks</Text>
             <View style={s.streakList}>
-              {sortedByStreak.map(({ habit, streak, longestStreak }) => {
-                const cfg = getCategoryConfig(habit.category);
-                const rate30 = getCompletionRate(habit, 30);
-                return (
-                  <View key={habit.id} style={s.streakRow}>
-                    <View
-                      style={[s.streakDot, { backgroundColor: cfg.color }]}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.streakHabitName} numberOfLines={1}>
-                        {habit.title}
-                      </Text>
-                      <View style={s.streakBarTrack}>
-                        <View
-                          style={[
-                            s.streakBarFill,
-                            { width: `${rate30}%`, backgroundColor: cfg.color },
-                          ]}
-                        />
-                      </View>
-                      <Text style={s.streakRate}>{rate30}% letzte 30 Tage</Text>
-                    </View>
-                    <View style={s.streakNums}>
-                      <View style={s.streakNumItem}>
-                        <Text style={s.streakNumValue}>
-                          <MaterialCommunityIcons
-                            name="fire"
-                            size={14}
-                            color="#F74920"
-                          />{" "}
-                          {streak ?? 0}
-                        </Text>
-                        <Text style={s.streakNumLabel}>aktuell</Text>
-                      </View>
-                      <View style={s.streakNumItem}>
-                        <Text style={[s.streakNumValue, { color: "#8b5cf6" }]}>
-                          {longestStreak ?? 0}
-                        </Text>
-                        <Text style={s.streakNumLabel}>best</Text>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
+              {sortedByStreak.map(({ habit, streak, longestStreak }) => (
+                <StreakRow
+                  key={habit.id}
+                  habit={habit}
+                  streak={streak ?? 0}
+                  longestStreak={longestStreak ?? 0}
+                />
+              ))}
               {habits.length === 0 && (
                 <Text style={s.emptyText}>Noch keine Habits angelegt</Text>
               )}

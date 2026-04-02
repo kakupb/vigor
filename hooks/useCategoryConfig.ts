@@ -7,8 +7,12 @@ export function useCategoryConfig(
   category?: PlannerCategory,
   customCategoryId?: string
 ) {
-  const customCats = useCustomCategoryStore((s) => s.categories);
-  const customCat = customCats.find((c) => c.id === customCategoryId);
+  const categories = useCustomCategoryStore((s) => s.categories);
+
+  const customCat = customCategoryId
+    ? categories.find((c) => c.id === customCategoryId)
+    : undefined;
+
   if (customCat) {
     return {
       ...getCategoryConfig("other"),

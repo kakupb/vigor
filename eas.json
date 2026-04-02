@@ -1,15 +1,29 @@
-{
+
+  {
     "cli": {
-      "version": ">= 10.0.0"
+      "version": ">= 16.0.0"
     },
     "build": {
       "development": {
         "developmentClient": true,
-        "distribution": "internal"
+        "distribution": "internal",
+        "node": "20.19.4",
+        "ios": {
+          "image": "macos-sequoia-15.3-xcode-16.2"
+        }
+      },
+      "preview": {
+        "distribution": "internal",
+        "node": "20.19.4",
+        "ios": {
+          "image": "macos-sequoia-15.3-xcode-16.2"
+        }
       },
       "production": {
+        "node": "20.19.4",
         "ios": {
-          "simulator": false
+          "simulator": false,
+          "image": "macos-sequoia-15.3-xcode-16.2"
         },
         "env": {
           "EXPO_PUBLIC_SUPABASE_URL": "https://ujefsxdppozfhjjoiwmf.supabase.co",

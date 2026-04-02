@@ -87,7 +87,7 @@
         }
       ],
       [
-        "@kingstinct/react-native-healthkit",
+        "react-native-health",
         {
           "NSHealthShareUsageDescription": "Vigor liest Workout- und Aktivitätsdaten aus Apple Health, damit du Trainings in deinen Planner importieren und Gesundheitsmetriken in der Analyse sehen kannst.",
           "NSHealthUpdateUsageDescription": "Vigor schreibt keine Daten in Apple Health."
@@ -106,6 +106,7 @@
       "eas": {
         "projectId": "28a83525-f119-44d7-a682-9dc17fb6ccea"
       }
-    }
+    },
+    "owner": "kakupb"
   }
 }

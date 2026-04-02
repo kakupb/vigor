@@ -2,69 +2,40 @@
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 
-let _hk: any = null;
+let RNHealth: any = null;
 try {
-  _hk = require("@kingstinct/react-native-healthkit");
+  RNHealth = require("react-native-health").default;
 } catch {}
 
-const useHealthkitAuthorization = _hk?.useHealthkitAuthorization;
-const useMostRecentCategorySample = _hk?.useMostRecentCategorySample;
-const useMostRecentQuantitySample = _hk?.useMostRecentQuantitySample;
-const useStatisticsForQuantity = _hk?.useStatisticsForQuantity;
-const useMostRecentWorkout = _hk?.useMostRecentWorkout;
-const AuthorizationRequestStatus = _hk?.AuthorizationRequestStatus;
-
-export const STEP_COUNT = "HKQuantityTypeIdentifierStepCount" as const;
-export const HEART_RATE = "HKQuantityTypeIdentifierHeartRate" as const;
-export const ACTIVE_ENERGY =
-  "HKQuantityTypeIdentifierActiveEnergyBurned" as const;
-export const DISTANCE_WALKING =
-  "HKQuantityTypeIdentifierDistanceWalkingRunning" as const;
-export const BODY_MASS = "HKQuantityTypeIdentifierBodyMass" as const;
-export const SLEEP_ANALYSIS = "HKCategoryTypeIdentifierSleepAnalysis" as const;
-export const WORKOUT_TYPE = "HKWorkoutTypeIdentifier" as const;
-export const HRV_SDNN =
-  "HKQuantityTypeIdentifierHeartRateVariabilitySDNN" as const;
-export const RESPIRATORY_RATE =
-  "HKQuantityTypeIdentifierRespiratoryRate" as const;
-export const OXYGEN_SATURATION =
-  "HKQuantityTypeIdentifierOxygenSaturation" as const;
-export const RESTING_HEART_RATE =
-  "HKQuantityTypeIdentifierRestingHeartRate" as const;
-export const WRIST_TEMPERATURE =
-  "HKQuantityTypeIdentifierAppleSleepingWristTemperature" as const;
-
-const SLEEP_ASLEEP_UNSPECIFIED = 0;
-const SLEEP_ASLEEP_CORE = 3;
-const SLEEP_ASLEEP_DEEP = 4;
-const SLEEP_ASLEEP_REM = 5;
-
-export const READ_PERMISSIONS = {
-  toRead: [
-    STEP_COUNT,
-    HEART_RATE,
-    ACTIVE_ENERGY,
-    DISTANCE_WALKING,
-    BODY_MASS,
-    WORKOUT_TYPE,
-    SLEEP_ANALYSIS,
-    HRV_SDNN,
-    RESPIRATORY_RATE,
-    OXYGEN_SATURATION,
-    RESTING_HEART_RATE,
-    WRIST_TEMPERATURE,
-    "HKQuantityTypeIdentifierRunningSpeed" as const,
-    "HKQuantityTypeIdentifierCyclingSpeed" as const,
-    "HKQuantityTypeIdentifierCyclingCadence" as const,
-    "HKQuantityTypeIdentifierCyclingPower" as const,
-    "HKQuantityTypeIdentifierRunningPower" as const,
-  ],
-} as const;
+// ─── Permissions ──────────────────────────────────────────────────────────────
+const PERMISSIONS = {
+  permissions: {
+    read: [
+      "StepCount",
+      "ActiveEnergyBurned",
+      "DistanceWalkingRunning",
+      "HeartRate",
+      "RestingHeartRate",
+      "BodyMass",
+      "SleepAnalysis",
+      "HeartRateVariabilitySDNN",
+      "RespiratoryRate",
+      "OxygenSaturation",
+      "Workout",
+      "RunningSpeed",
+      "CyclingSpeed",
+      "CyclingCadence",
+      "CyclingPower",
+      "RunningPower",
+    ],
+    write: [],
+  },
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type WorkoutData = {
-  activityType: string; // nur Text-Label, kein Emoji mehr
-  typeNum: number; // ← neu: wird für Icon-Lookup in UI-Komponenten genutzt
+  activityType: string;
+  typeNum: number;
   durationMin: number;
   calories: number;
   distanceKm: number;
@@ -87,8 +58,14 @@ export type HealthAuth = {
   requestAuth: () => void;
 };
 
-// ─── Workout helpers ──────────────────────────────────────────────────────────
-// workoutEmoji() entfernt — Icons kommen jetzt aus WO_MAP in den UI-Komponenten
+export type WorkoutHistoryData = WorkoutData & {
+  id: string;
+  startDate: Date;
+  endDate: Date;
+  typeNum: number;
+};
+
+// ─── Workout label map ────────────────────────────────────────────────────────
 export function workoutLabel(typeNum: number): string {
   const map: Record<number, string> = {
     37: "Laufen",
@@ -107,115 +84,189 @@ export function workoutLabel(typeNum: number): string {
   return map[typeNum] ?? `Training (${typeNum})`;
 }
 
-// ─── useHealthAuth ────────────────────────────────────────────────────────────
-export function useHealthAuth(): HealthAuth {
-  if (Platform.OS !== "ios" || !useHealthkitAuthorization) {
-    return { isAvailable: false, isAuthorized: false, requestAuth: () => {} };
-  }
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [authStatus, requestAuth] = useHealthkitAuthorization(READ_PERMISSIONS);
-  return {
-    isAvailable: true,
-    isAuthorized: authStatus === AuthorizationRequestStatus?.unnecessary,
-    requestAuth,
+// ─── Activity type string → number ───────────────────────────────────────────
+function activityTypeToNum(type: string): number {
+  const map: Record<string, number> = {
+    Running: 37,
+    Cycling: 13,
+    Swimming: 46,
+    Walking: 52,
+    FunctionalStrengthTraining: 20,
+    TraditionalStrengthTraining: 63,
+    Yoga: 48,
+    HighIntensityIntervalTraining: 57,
   };
+  return map[type] ?? 3000;
 }
 
-// ─── useSleepHours ────────────────────────────────────────────────────────────
-function useSleepHours(): number {
-  if (!useMostRecentCategorySample) return 0;
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const lastSleep = useMostRecentCategorySample(SLEEP_ANALYSIS);
-  if (!lastSleep) return 0;
-  const v = lastSleep.value as number;
-  const isAsleep =
-    v === SLEEP_ASLEEP_UNSPECIFIED ||
-    v === SLEEP_ASLEEP_CORE ||
-    v === SLEEP_ASLEEP_DEEP ||
-    v === SLEEP_ASLEEP_REM;
-  if (!isAsleep) return 0;
-  const ms = lastSleep.endDate.getTime() - lastSleep.startDate.getTime();
-  return Math.round((ms / (1_000 * 60 * 60)) * 10) / 10;
+// ─── Auth state ───────────────────────────────────────────────────────────────
+let _authorized = false;
+let _authListeners: Array<(auth: boolean) => void> = [];
+
+function notifyAuth(v: boolean) {
+  _authorized = v;
+  _authListeners.forEach((fn) => fn(v));
+}
+
+function requestHealthAuth() {
+  if (Platform.OS !== "ios" || !RNHealth) return;
+  RNHealth.initHealthKit(PERMISSIONS, (err: any) => {
+    notifyAuth(!err);
+  });
+}
+
+export function useHealthAuth(): HealthAuth {
+  const [authorized, setAuthorized] = useState(_authorized);
+
+  useEffect(() => {
+    if (Platform.OS !== "ios" || !RNHealth) return;
+    _authListeners.push(setAuthorized);
+    // Auto-check on mount
+    if (!_authorized) {
+      RNHealth.initHealthKit(PERMISSIONS, (err: any) => {
+        notifyAuth(!err);
+      });
+    }
+    return () => {
+      _authListeners = _authListeners.filter((fn) => fn !== setAuthorized);
+    };
+  }, []);
+
+  return {
+    isAvailable: Platform.OS === "ios" && !!RNHealth,
+    isAuthorized: authorized,
+    requestAuth: requestHealthAuth,
+  };
 }
 
 // ─── useHealthValues ──────────────────────────────────────────────────────────
 export function useHealthValues(): HealthValues {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const now = new Date();
+  const { isAuthorized } = useHealthAuth();
+  const [values, setValues] = useState<HealthValues>({
+    steps: 0,
+    calories: 0,
+    distanceKm: 0,
+    heartRate: 0,
+    weightKg: 0,
+    sleepHours: 0,
+    lastWorkout: null,
+  });
 
-  const stepsStats = useStatisticsForQuantity?.(
-    STEP_COUNT,
-    ["cumulativeSum"],
-    todayStart,
-    now,
-    "count"
-  );
-  const caloriesStats = useStatisticsForQuantity?.(
-    ACTIVE_ENERGY,
-    ["cumulativeSum"],
-    todayStart,
-    now,
-    "kcal"
-  );
-  const distanceStats = useStatisticsForQuantity?.(
-    DISTANCE_WALKING,
-    ["cumulativeSum"],
-    todayStart,
-    now,
-    "km"
-  );
-  const heartRateSample = useMostRecentQuantitySample?.(HEART_RATE);
-  const weightSample = useMostRecentQuantitySample?.(BODY_MASS);
-  const sleepHours = useSleepHours();
-  const lastWorkoutRaw = useMostRecentWorkout?.();
+  useEffect(() => {
+    if (!isAuthorized || Platform.OS !== "ios" || !RNHealth) return;
 
-  let lastWorkout: WorkoutData | null = null;
-  if (lastWorkoutRaw) {
-    try {
-      const typeNum = lastWorkoutRaw.workoutActivityType as unknown as number;
-      const dur =
-        (lastWorkoutRaw.endDate.getTime() -
-          lastWorkoutRaw.startDate.getTime()) /
-        60_000;
-      lastWorkout = {
-        activityType: workoutLabel(typeNum), // ← kein Emoji mehr
-        typeNum, // ← neu
-        durationMin: Math.round(dur),
-        calories: Math.round(
-          (lastWorkoutRaw as any).totalEnergyBurned?.quantity ?? 0
-        ),
-        distanceKm:
-          Math.round(
-            ((lastWorkoutRaw as any).totalDistance?.quantity ?? 0) * 10
-          ) / 10,
-        date: lastWorkoutRaw.startDate,
-      };
-    } catch {
-      lastWorkout = null;
-    }
-  }
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const opts = {
+      startDate: todayStart.toISOString(),
+      endDate: now.toISOString(),
+    };
 
-  return {
-    steps: Math.round(stepsStats?.sumQuantity?.quantity ?? 0),
-    calories: Math.round(caloriesStats?.sumQuantity?.quantity ?? 0),
-    distanceKm:
-      Math.round((distanceStats?.sumQuantity?.quantity ?? 0) * 10) / 10,
-    heartRate: Math.round(heartRateSample?.quantity ?? 0),
-    weightKg: Math.round((weightSample?.quantity ?? 0) * 10) / 10,
-    sleepHours,
-    lastWorkout,
-  };
+    // Steps
+    RNHealth.getStepCount(opts, (err: any, r: any) => {
+      if (!err) setValues((v) => ({ ...v, steps: Math.round(r?.value ?? 0) }));
+    });
+
+    // Calories
+    RNHealth.getActiveEnergyBurned(opts, (err: any, r: any[]) => {
+      if (!err && r?.length) {
+        const total = r.reduce((a: number, s: any) => a + (s.value ?? 0), 0);
+        setValues((v) => ({ ...v, calories: Math.round(total) }));
+      }
+    });
+
+    // Distance
+    RNHealth.getDistanceWalkingRunning(opts, (err: any, r: any) => {
+      if (!err)
+        setValues((v) => ({
+          ...v,
+          distanceKm: Math.round(((r?.value ?? 0) / 1000) * 10) / 10,
+        }));
+    });
+
+    // Heart rate (most recent)
+    RNHealth.getHeartRateSamples(
+      { ...opts, ascending: false, limit: 1 },
+      (err: any, r: any[]) => {
+        if (!err && r?.length)
+          setValues((v) => ({ ...v, heartRate: Math.round(r[0].value) }));
+      }
+    );
+
+    // Weight (most recent)
+    RNHealth.getLatestWeight({ unit: "gram" }, (err: any, r: any) => {
+      if (!err && r?.value)
+        setValues((v) => ({
+          ...v,
+          weightKg: Math.round((r.value / 1000) * 10) / 10,
+        }));
+    });
+
+    // Sleep (last night)
+    const sleepStart = new Date(todayStart.getTime() - 12 * 3600 * 1000);
+    RNHealth.getSleepSamples(
+      { startDate: sleepStart.toISOString(), endDate: now.toISOString() },
+      (err: any, r: any[]) => {
+        if (!err && r?.length) {
+          const asleep = r.filter((s: any) =>
+            [
+              "ASLEEP",
+              "ASLEEP_CORE",
+              "ASLEEP_DEEP",
+              "ASLEEP_REM",
+              "ASLEEP_UNSPECIFIED",
+            ].includes(s.value)
+          );
+          const totalMs = asleep.reduce(
+            (a: number, s: any) =>
+              a +
+              (new Date(s.endDate).getTime() - new Date(s.startDate).getTime()),
+            0
+          );
+          setValues((v) => ({
+            ...v,
+            sleepHours: Math.round((totalMs / 3_600_000) * 10) / 10,
+          }));
+        }
+      }
+    );
+
+    // Last workout
+    RNHealth.getSamples(
+      {
+        startDate: new Date(now.getTime() - 30 * 86_400_000).toISOString(),
+        endDate: now.toISOString(),
+        type: "Workout",
+        ascending: false,
+        limit: 1,
+      },
+      (err: any, r: any[]) => {
+        if (!err && r?.length) {
+          const w = r[0];
+          const typeNum = activityTypeToNum(w.activityType ?? "");
+          const dur =
+            (new Date(w.end).getTime() - new Date(w.start).getTime()) / 60_000;
+          setValues((v) => ({
+            ...v,
+            lastWorkout: {
+              activityType: workoutLabel(typeNum),
+              typeNum,
+              durationMin: Math.round(dur),
+              calories: Math.round(w.calories ?? 0),
+              distanceKm: Math.round(((w.distance ?? 0) / 1000) * 10) / 10,
+              date: new Date(w.start),
+            },
+          }));
+        }
+      }
+    );
+  }, [isAuthorized]);
+
+  return values;
 }
 
 // ─── useWorkoutHistory ────────────────────────────────────────────────────────
-export type WorkoutHistoryData = WorkoutData & {
-  id: string;
-  startDate: Date;
-  endDate: Date;
-  typeNum: number;
-};
-
 export function useWorkoutHistory(limit = 50): {
   workouts: WorkoutHistoryData[];
   isLoading: boolean;
@@ -227,45 +278,44 @@ export function useWorkoutHistory(limit = 50): {
   const { isAuthorized } = useHealthAuth();
 
   useEffect(() => {
-    if (Platform.OS !== "ios" || !_hk || !isAuthorized) return;
+    if (!isAuthorized || Platform.OS !== "ios" || !RNHealth) return;
     setIsLoading(true);
 
-    _hk
-      .queryWorkoutSamples({
-        startDate: new Date(Date.now() - 1_000 * 60 * 60 * 24 * 365),
-        endDate: new Date(),
+    RNHealth.getSamples(
+      {
+        startDate: new Date(Date.now() - 365 * 86_400_000).toISOString(),
+        endDate: new Date().toISOString(),
+        type: "Workout",
+        ascending: false,
         limit,
-      })
-      .then((samples: any[]) => {
-        if (!samples?.length) {
+      },
+      (err: any, r: any[]) => {
+        setIsLoading(false);
+        if (err || !r?.length) {
           setWorkouts([]);
           return;
         }
-        const mapped: WorkoutHistoryData[] = samples.map((s: any) => {
-          const typeNum =
-            typeof s.workoutActivityType === "number"
-              ? s.workoutActivityType
-              : parseInt(s.workoutActivityType ?? "0", 10);
-          const dur =
-            (new Date(s.endDate).getTime() - new Date(s.startDate).getTime()) /
-            60_000;
+
+        const mapped: WorkoutHistoryData[] = r.map((w: any) => {
+          const typeNum = activityTypeToNum(w.activityType ?? "");
+          const startDate = new Date(w.start);
+          const endDate = new Date(w.end);
+          const dur = (endDate.getTime() - startDate.getTime()) / 60_000;
           return {
-            id: s.uuid ?? String(Math.random()),
-            startDate: new Date(s.startDate),
-            endDate: new Date(s.endDate),
+            id: w.id ?? `${w.start}-${typeNum}`,
+            activityType: workoutLabel(typeNum),
             typeNum,
-            activityType: workoutLabel(typeNum), // ← kein Emoji mehr
             durationMin: Math.round(dur),
-            calories: Math.round(s.totalEnergyBurned?.quantity ?? 0),
-            distanceKm: Math.round((s.totalDistance?.quantity ?? 0) * 10) / 10,
-            date: new Date(s.startDate),
+            calories: Math.round(w.calories ?? 0),
+            distanceKm: Math.round(((w.distance ?? 0) / 1000) * 10) / 10,
+            date: startDate,
+            startDate,
+            endDate,
           };
         });
-        mapped.sort((a, b) => b.startDate.getTime() - a.startDate.getTime());
         setWorkouts(mapped);
-      })
-      .catch(() => setWorkouts([]))
-      .finally(() => setIsLoading(false));
+      }
+    );
   }, [isAuthorized, tick, limit]);
 
   return { workouts, isLoading, reload: () => setTick((t) => t + 1) };

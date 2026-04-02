@@ -123,7 +123,12 @@ export function HabitCard({
         {!expanded && (
           <View style={styles.collapsedContent}>
             <View style={styles.collapsedLeft}>
-              <CategoryIcon category={category} size={18} containerSize={36} />
+              <CategoryIcon
+                category={category}
+                customCategoryId={customCategoryId}
+                size={18}
+                containerSize={36}
+              />
               <Text style={styles.title} numberOfLines={1}>
                 {title}
               </Text>
@@ -174,6 +179,7 @@ export function HabitCard({
             <View style={styles.expandedHeader}>
               <View style={styles.expandedHeaderLeft}>
                 <CategoryIcon
+                  customCategoryId={customCategoryId}
                   category={category}
                   size={24}
                   containerSize={36}

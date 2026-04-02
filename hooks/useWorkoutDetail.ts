@@ -1,44 +1,30 @@
 // hooks/useWorkoutDetail.ts
-// Fetches time-series sensor data for a single workout session.
-// Returns sport-specific metrics as TSSample[] arrays.
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 
-let _hk: any = null;
+let RNHealth: any = null;
 try {
-  _hk = require("@kingstinct/react-native-healthkit");
+  RNHealth = require("react-native-health").default;
 } catch {}
 
-// ─── HK Identifiers ───────────────────────────────────────────────────────────
-export const WD_HEART_RATE = "HKQuantityTypeIdentifierHeartRate" as const;
-export const WD_RUNNING_SPEED = "HKQuantityTypeIdentifierRunningSpeed" as const;
-export const WD_CYCLING_SPEED = "HKQuantityTypeIdentifierCyclingSpeed" as const;
-export const WD_CYCLING_CADENCE =
-  "HKQuantityTypeIdentifierCyclingCadence" as const;
-export const WD_CYCLING_POWER = "HKQuantityTypeIdentifierCyclingPower" as const;
-export const WD_RUNNING_POWER = "HKQuantityTypeIdentifierRunningPower" as const;
-export const WD_STEP_COUNT = "HKQuantityTypeIdentifierStepCount" as const;
-export const WD_ACTIVE_ENERGY =
-  "HKQuantityTypeIdentifierActiveEnergyBurned" as const;
-
-// Permissions needed for workout detail view
-export const WORKOUT_DETAIL_PERMISSIONS = [
-  WD_HEART_RATE,
-  WD_RUNNING_SPEED,
-  WD_CYCLING_SPEED,
-  WD_CYCLING_CADENCE,
-  WD_CYCLING_POWER,
-  WD_RUNNING_POWER,
-];
+// ─── HK Identifiers (für Kompatibilität mit UI-Komponenten) ──────────────────
+export const WD_HEART_RATE = "HeartRate";
+export const WD_RUNNING_SPEED = "RunningSpeed";
+export const WD_CYCLING_SPEED = "CyclingSpeed";
+export const WD_CYCLING_CADENCE = "CyclingCadence";
+export const WD_CYCLING_POWER = "CyclingPower";
+export const WD_RUNNING_POWER = "RunningPower";
+export const WD_STEP_COUNT = "StepCount";
+export const WD_ACTIVE_ENERGY = "ActiveEnergyBurned";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-export type WDSample = { t: number; v: number }; // t = seconds from workout start
+export type WDSample = { t: number; v: number };
 
 export type WorkoutMetrics = {
   hrSeries: WDSample[];
-  speedSeries: WDSample[]; // m/s → converted to km/h or min/km depending on sport
-  cadenceSeries: WDSample[]; // rpm (cycling) or spm (running approximation)
-  powerSeries: WDSample[]; // watts
+  speedSeries: WDSample[];
+  cadenceSeries: WDSample[];
+  powerSeries: WDSample[];
   isLoading: boolean;
 };
 
@@ -58,43 +44,37 @@ export function getSportCategory(typeNum: number): SportCategory {
   return "other";
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-async function queryMetric(
-  id: string,
+// ─── Helper: query a quantity type ───────────────────────────────────────────
+async function querySamples(
+  type: string,
   start: Date,
-  end: Date,
-  units: string[]
+  end: Date
 ): Promise<{ value: number; startDate: Date }[]> {
-  const hk = _hk?.default ?? _hk;
-  const fn = hk?.queryQuantitySamples;
-  if (!fn) return [];
-
-  const toVal = (s: any): number => {
-    if (typeof s.quantity === "number") return s.quantity;
-    if (typeof s.quantity?.quantity === "number") return s.quantity.quantity;
-    if (typeof s.value === "number") return s.value;
-    return 0;
-  };
-
-  for (const unit of units) {
-    for (const params of [
-      { from: start, to: end, unit },
-      { startDate: start, endDate: end, unit },
-    ]) {
-      try {
-        const r = await fn.call(hk, id, params);
-        if (Array.isArray(r) && r.length > 0) {
-          return r
-            .map((s: any) => ({
-              value: toVal(s),
-              startDate: new Date(s.startDate),
-            }))
-            .filter((s) => s.value > 0);
+  if (!RNHealth) return [];
+  return new Promise((resolve) => {
+    RNHealth.getSamples(
+      {
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        type,
+        ascending: true,
+      },
+      (err: any, r: any[]) => {
+        if (err || !r?.length) {
+          resolve([]);
+          return;
         }
-      } catch {}
-    }
-  }
-  return [];
+        resolve(
+          r
+            .map((s: any) => ({
+              value: s.value ?? 0,
+              startDate: new Date(s.startDate ?? s.start),
+            }))
+            .filter((s) => s.value > 0)
+        );
+      }
+    );
+  });
 }
 
 function toSeries(
@@ -122,65 +102,39 @@ export function useWorkoutDetail(
   });
 
   useEffect(() => {
-    if (!startDate || !endDate || Platform.OS !== "ios") return;
-    const hk = _hk?.default ?? _hk;
-    if (!hk) return;
+    if (!startDate || !endDate || Platform.OS !== "ios" || !RNHealth) return;
 
     const cat = getSportCategory(typeNum);
     setMetrics((m) => ({ ...m, isLoading: true }));
-
     const startMs = startDate.getTime();
 
     const isCycling = cat === "cycling";
     const isRunning = cat === "running";
 
     Promise.all([
-      // HR — always
-      queryMetric(WD_HEART_RATE, startDate, endDate, ["count/min", "bpm"]),
-      // Speed — running or cycling
+      querySamples("HeartRate", startDate, endDate),
       isRunning
-        ? queryMetric(WD_RUNNING_SPEED, startDate, endDate, ["m/s", "km/hr"])
+        ? querySamples("RunningSpeed", startDate, endDate)
         : isCycling
-        ? queryMetric(WD_CYCLING_SPEED, startDate, endDate, ["m/s", "km/hr"])
+        ? querySamples("CyclingSpeed", startDate, endDate)
         : Promise.resolve([]),
-      // Cadence — cycling only (running cadence isn't a HealthKit quantity type)
       isCycling
-        ? queryMetric(WD_CYCLING_CADENCE, startDate, endDate, ["count/min"])
+        ? querySamples("CyclingCadence", startDate, endDate)
         : Promise.resolve([]),
-      // Power
       isCycling
-        ? queryMetric(WD_CYCLING_POWER, startDate, endDate, ["W"])
+        ? querySamples("CyclingPower", startDate, endDate)
         : isRunning
-        ? queryMetric(WD_RUNNING_POWER, startDate, endDate, ["W"])
+        ? querySamples("RunningPower", startDate, endDate)
         : Promise.resolve([]),
-    ])
-      .then(([hrRaw, speedRaw, cadenceRaw, powerRaw]) => {
-        const hrSeries = toSeries(hrRaw, startMs);
-        const speedRawSeries = toSeries(speedRaw, startMs);
-        const cadenceSeries = toSeries(cadenceRaw, startMs);
-        const powerSeries = toSeries(powerRaw, startMs);
-
-        // Convert speed: m/s → km/h for cycling, min/km for running
-        const speedSeries = speedRawSeries
-          .map((s) => ({
-            t: s.t,
-            v: isRunning
-              ? s.v > 0
-                ? 1000 / (s.v * 60)
-                : 0 // m/s → min/km
-              : s.v * 3.6, // m/s → km/h
-          }))
-          .filter((s) => s.v > 0 && s.v < (isRunning ? 30 : 120)); // sanity filter
-
-        setMetrics({
-          hrSeries,
-          speedSeries,
-          cadenceSeries,
-          powerSeries,
-          isLoading: false,
-        });
-      })
-      .catch(() => setMetrics((m) => ({ ...m, isLoading: false })));
+    ]).then(([hr, speed, cadence, power]) => {
+      setMetrics({
+        hrSeries: toSeries(hr, startMs),
+        speedSeries: toSeries(speed, startMs),
+        cadenceSeries: toSeries(cadence, startMs),
+        powerSeries: toSeries(power, startMs),
+        isLoading: false,
+      });
+    });
   }, [startDate?.getTime(), endDate?.getTime(), typeNum]);
 
   return metrics;

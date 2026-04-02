@@ -1,6 +1,5 @@
 // store/focusStore.ts
 // Offline-first: Sessions lokal + Supabase.
-// Neu: pomodoroConfig (einstellbare Zeiten) + selectedSound (expo-audio)
 import { DEFAULT_POMODORO_CONFIG, PomodoroConfig } from "@/hooks/usePomodoro";
 import {
   getCurrentUser,
@@ -8,9 +7,11 @@ import {
   syncUpsert,
   syncUpsertSingle,
 } from "@/lib/sync";
+import { syncWidgetData } from "@/modules/widgetBridge";
 import { storage } from "@/services/storage";
 import { FocusSession, FocusStats } from "@/types/focus";
-import { dateToLocalString } from "@/utils/dateUtils";
+import { dateToLocalString, getTodayTimestamp } from "@/utils/dateUtils";
+import { isScheduledForToday } from "@/utils/scheduleUtils";
 import { create } from "zustand";
 
 export type AmbientSound =
@@ -34,8 +35,6 @@ export const AMBIENT_SOUNDS: {
   { id: "forest", label: "Wald", icon: "partly-sunny-outline" },
 ];
 
-// Dateipfade — MP3s unter assets/sounds/ ablegen
-// Kostenlose Loops: freesound.org / mynoise.net (30–60 Sek. reichen, isLooping: true)
 export const SOUND_FILES: Record<AmbientSound, () => any | null> = {
   none: () => null,
   white: () => require("@/assets/sounds/white-noise.mp3"),
@@ -55,6 +54,49 @@ const defaultStats: FocusStats = {
   pomodorosCompleted: 0,
 };
 
+// ─── Widget-Sync: lazy, kein Circular Import ──────────────────────────────────
+// Greift zur Laufzeit auf beide Stores zu — kein Top-Level-Import nötig
+function syncWidget(sessions: FocusSession[], currentStreak: number): void {
+  try {
+    // Lazy require verhindert Circular Dependency
+    const { useHabitStore } = require("./habitStore");
+    const { useUserStore } = require("./userStore");
+
+    const { habits } = useHabitStore.getState();
+    const { name } = useUserStore.getState();
+
+    const todayTs = getTodayTimestamp();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayFocusMinutes = sessions
+      .filter((s) => s.startedAt >= todayStart.getTime())
+      .reduce(
+        (sum, s) =>
+          sum + Math.floor((s.focusSeconds ?? s.durationSeconds) / 60),
+        0
+      );
+
+    const todayHabits = habits.filter((h: any) =>
+      isScheduledForToday(h.schedule)
+    );
+
+    syncWidgetData({
+      streak: currentStreak,
+      todayFocusMinutes,
+      habitsCompleted: todayHabits.filter((h: any) =>
+        h.completedDates.includes(todayTs)
+      ).length,
+      habitsTotal: todayHabits.length,
+      userName: name && name !== "_onboarded" ? name : null,
+      lastUpdated: new Date().toISOString(),
+    });
+  } catch {
+    // Widget-Sync ist best-effort — nie die App blockieren
+  }
+}
+
+// ─── Supabase Mappings ────────────────────────────────────────────────────────
 async function sessionToRow(s: FocusSession) {
   const user = await getCurrentUser();
   if (!user) return null;
@@ -91,6 +133,7 @@ async function syncStats(stats: FocusStats) {
   });
 }
 
+// ─── Store ────────────────────────────────────────────────────────────────────
 type FocusState = {
   stats: FocusStats;
   sessions: FocusSession[];
@@ -113,40 +156,46 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   selectedSound: "none",
   pomodoroConfig: DEFAULT_POMODORO_CONFIG,
 
-  addSession: (session: FocusSession) => {
+  addSession: (session) => {
     const focusSeconds = session.focusSeconds ?? session.durationSeconds;
     const pomodoroCount = session.pomodoroCount ?? 0;
 
-    // Aborted-Check: kein vollständiger Zyklus UND < 60s Fokuszeit → verwerfen
+    // Unter 60s und kein vollständiger Zyklus → verwerfen
     if (session.status === "interrupted" && focusSeconds < 60) return;
 
     const newSessions = [...get().sessions, session];
     const focusMinutes = Math.floor(focusSeconds / 60);
+    const prev = get().stats;
 
     const updatedStats: FocusStats = {
-      ...get().stats,
+      ...prev,
       totalSessions:
-        get().stats.totalSessions + (session.status === "complete" ? 1 : 0),
+        prev.totalSessions + (session.status === "complete" ? 1 : 0),
       totalMinutes:
-        get().stats.totalMinutes +
+        prev.totalMinutes +
         (session.status === "complete"
           ? focusMinutes
           : Math.floor(focusMinutes / 2)),
       longestSessionMinutes:
         session.status === "complete"
-          ? Math.max(get().stats.longestSessionMinutes, focusMinutes)
-          : get().stats.longestSessionMinutes,
-      pomodorosCompleted: get().stats.pomodorosCompleted + pomodoroCount,
+          ? Math.max(prev.longestSessionMinutes, focusMinutes)
+          : prev.longestSessionMinutes,
+      pomodorosCompleted: prev.pomodorosCompleted + pomodoroCount,
     };
 
     set({ sessions: newSessions, stats: updatedStats });
     storage.save("focus_sessions", newSessions);
     storage.save("focus_stats", updatedStats);
+
+    // Async: Supabase + Streak + Widget — blockiert UI nie
     sessionToRow(session).then((row) => {
       if (row) syncUpsert("focus_sessions", row);
     });
     syncStats(updatedStats);
     get().updateStreak();
+
+    // Widget nach Streak-Update syncen (nächster Tick damit updateStreak fertig ist)
+    setTimeout(() => syncWidget(newSessions, get().stats.currentStreak), 0);
   },
 
   updateStreak: () => {
@@ -172,15 +221,20 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   },
 
   loadStats: async () => {
-    const localStats = await storage.load<FocusStats>("focus_stats");
-    const localSessions = await storage.load<FocusSession[]>("focus_sessions");
-    const localSound = await storage.load<boolean>("focus_sound_enabled");
-    const localSelectedSound = await storage.load<AmbientSound>(
-      "focus_selected_sound"
-    );
-    const localPomodoroConfig = await storage.load<PomodoroConfig>(
-      "focus_pomodoro_config"
-    );
+    const [
+      localStats,
+      localSessions,
+      localSound,
+      localSelectedSound,
+      localPomodoroConfig,
+    ] = await Promise.all([
+      storage.load<FocusStats>("focus_stats"),
+      storage.load<FocusSession[]>("focus_sessions"),
+      storage.load<boolean>("focus_sound_enabled"),
+      storage.load<AmbientSound>("focus_selected_sound"),
+      storage.load<PomodoroConfig>("focus_pomodoro_config"),
+    ]);
+
     const cloudStats = await syncLoadSingle<FocusStats>(
       "focus_stats",
       statsFromRow
@@ -193,6 +247,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       selectedSound: localSelectedSound ?? "none",
       pomodoroConfig: localPomodoroConfig ?? DEFAULT_POMODORO_CONFIG,
     });
+
     if (!cloudStats && localStats) syncStats(localStats);
   },
 
@@ -202,14 +257,13 @@ export const useFocusStore = create<FocusState>((set, get) => ({
     storage.save("focus_sound_enabled", newValue);
   },
 
-  setSound: (sound: AmbientSound) => {
-    // "none" → Sound aus; alles andere → Sound an
+  setSound: (sound) => {
     set({ selectedSound: sound, soundEnabled: sound !== "none" });
     storage.save("focus_selected_sound", sound);
     storage.save("focus_sound_enabled", sound !== "none");
   },
 
-  setPomodoroConfig: (config: PomodoroConfig) => {
+  setPomodoroConfig: (config) => {
     set({ pomodoroConfig: config });
     storage.save("focus_pomodoro_config", config);
   },

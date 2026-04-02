@@ -270,6 +270,7 @@ export default function HabitEditScreen() {
                 >
                   <CategoryIcon
                     category={cat.id}
+                    customCategoryId={habit.customCategoryId}
                     size={13}
                     containerSize={26}
                   />
@@ -284,7 +285,12 @@ export default function HabitEditScreen() {
 
         {/* VORSCHAU */}
         <View style={[s.preview, { borderLeftColor: cfg.color }]}>
-          <CategoryIcon category={category} size={18} containerSize={40} />
+          <CategoryIcon
+            category={category}
+            customCategoryId={habit.customCategoryId}
+            size={18}
+            containerSize={40}
+          />
           <View style={{ flex: 1 }}>
             <Text style={s.previewTitle} numberOfLines={1}>
               {title || "Habit Titel"}

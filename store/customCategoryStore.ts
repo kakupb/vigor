@@ -59,44 +59,51 @@ type CustomCategoryState = {
 };
 
 export const useCustomCategoryStore = create<CustomCategoryState>(
-  (set, get) => ({
-    categories: [],
-    presetColors: PRESET_COLORS,
-    presetEmojis: PRESET_EMOJIS,
+  (set, get) => {
+    // Sofort beim ersten Import laden — kein useEffect nötig
+    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
+      if (raw) set({ categories: JSON.parse(raw) });
+    });
 
-    load: async () => {
-      try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) set({ categories: JSON.parse(raw) });
-      } catch {}
-    },
+    return {
+      categories: [],
+      presetColors: PRESET_COLORS,
+      presetEmojis: PRESET_EMOJIS,
 
-    add: (label, color, emoji) => {
-      const newCat: CustomCategory = {
-        id: `custom_${Date.now()}`,
-        label: label.trim(),
-        color,
-        emoji,
-        createdAt: Date.now(),
-        usageCount: 0,
-      };
-      const updated = [...get().categories, newCat];
-      set({ categories: updated });
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      return newCat.id; // ← zurückgeben
-    },
+      load: async () => {
+        try {
+          const raw = await AsyncStorage.getItem(STORAGE_KEY);
+          if (raw) set({ categories: JSON.parse(raw) });
+        } catch {}
+      },
 
-    remove: (id) => {
-      const updated = get().categories.filter((c) => c.id !== id);
-      set({ categories: updated });
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    },
-    incrementUsage: (id) => {
-      const updated = get().categories.map((c) =>
-        c.id === id ? { ...c, usageCount: (c.usageCount ?? 0) + 1 } : c
-      );
-      set({ categories: updated });
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    },
-  })
+      add: (label, color, emoji) => {
+        const newCat: CustomCategory = {
+          id: `custom_${Date.now()}`,
+          label: label.trim(),
+          color,
+          emoji,
+          createdAt: Date.now(),
+          usageCount: 0,
+        };
+        const updated = [...get().categories, newCat];
+        set({ categories: updated });
+        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        return newCat.id; // ← zurückgeben
+      },
+
+      remove: (id) => {
+        const updated = get().categories.filter((c) => c.id !== id);
+        set({ categories: updated });
+        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      },
+      incrementUsage: (id) => {
+        const updated = get().categories.map((c) =>
+          c.id === id ? { ...c, usageCount: (c.usageCount ?? 0) + 1 } : c
+        );
+        set({ categories: updated });
+        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      },
+    };
+  }
 );

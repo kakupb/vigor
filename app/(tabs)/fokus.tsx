@@ -10,9 +10,9 @@ import { SoundPickerSheet } from "@/components/focus/SoundPickerSheet";
 import { MenuSheet } from "@/components/today/MenuSheet";
 import { OnboardingModal } from "@/components/today/OnboardingModal";
 import { QuoteOfTheDay } from "@/components/today/QuoteOfTheDay";
-import { getCategoryConfig } from "@/constants/categories";
 import { usePlannerDay } from "@/hooks/planner/usePlanner";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useCategoryConfig } from "@/hooks/useCategoryConfig";
 import { useHabits } from "@/hooks/useHabits";
 import {
   AMBIENT_SOUNDS,
@@ -103,16 +103,18 @@ function HabitChip({
   title,
   completed,
   category,
+  customCategoryId, // ← NEU
   onToggle,
   dark,
 }: {
   title: string;
   completed: boolean;
   category?: string;
+  customCategoryId?: string; // ← NEU
   onToggle: () => void;
   dark: boolean;
 }) {
-  const cfg = getCategoryConfig(category as any);
+  const cfg = useCategoryConfig(category as any, customCategoryId);
   return (
     <Pressable
       onPress={() => {
@@ -172,6 +174,7 @@ function PlannerChip({
   title,
   startTime,
   category,
+  customCategoryId, // ← NEU
   done,
   onPress,
   dark,
@@ -179,11 +182,12 @@ function PlannerChip({
   title: string;
   startTime?: string;
   category?: string;
+  customCategoryId?: string; // ← NEU
   done: boolean;
   onPress: () => void;
   dark: boolean;
 }) {
-  const cfg = getCategoryConfig(category as any);
+  const cfg = useCategoryConfig(category as any, customCategoryId);
   return (
     <Pressable
       onPress={onPress}
@@ -321,11 +325,19 @@ export default function FokusScreen() {
 
   // Streak-Text
   const streak = focusStats.currentStreak;
+  const lastFocusDate = focusStats.lastFocusDate; // YYYY-MM-DD
+
+  const todayStr = dateToLocalString(new Date());
+  const yesterdayStr = dateToLocalString(new Date(Date.now() - 86_400_000));
   const streakLabel =
     streak === 0
       ? "Starte deinen ersten Streak"
+      : streak === 1 && lastFocusDate === todayStr
+      ? "Gut gemacht! Komm morgen wieder."
+      : streak === 1 && lastFocusDate === yesterdayStr
+      ? "Gestern angefangen — mach heute weiter!"
       : streak === 1
-      ? "1 Tag in Folge"
+      ? "Gut gemacht! Komm morgen wieder."
       : `${streak} Tage in Folge`;
 
   // Playable sounds (ohne "none")
@@ -409,7 +421,7 @@ export default function FokusScreen() {
       },
       streakLabel: { fontSize: 12, color: c.textMuted, fontWeight: "500" },
       streakValue: {
-        fontSize: 17,
+        fontSize: 12,
         fontWeight: "700",
         color: streak > 0 ? "#f59e0b" : c.textPrimary,
         marginTop: 1,
@@ -693,6 +705,7 @@ export default function FokusScreen() {
                       title={habit.title}
                       completed={completed}
                       category={habit.category}
+                      customCategoryId={habit.customCategoryId} // ← NEU
                       onToggle={() => habitActions.toggleCheckIn(habit.id)}
                       dark={c.dark}
                     />
@@ -751,6 +764,7 @@ export default function FokusScreen() {
                     title={entry.title}
                     startTime={entry.startTime}
                     category={entry.category}
+                    customCategoryId={entry.customCategoryId} // ← NEU
                     done={!!entry.doneAt}
                     onPress={() => plannerActions.toggleDone(entry.id)}
                     dark={c.dark}

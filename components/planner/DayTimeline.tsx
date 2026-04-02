@@ -1,5 +1,5 @@
 // components/planner/DayTimeline.tsx
-import { getCategoryConfig } from "@/constants/categories";
+import { useCategoryConfig } from "@/hooks/useCategoryConfig";
 import { usePlannerStore } from "@/store/plannerStore";
 import { PlannerEntry } from "@/types/planner";
 import { timeToMinutes } from "@/utils/dateUtils";
@@ -23,6 +23,106 @@ type DayTimelineProps = {
   onLongPressBackground?: (startTime?: string, endTime?: string) => void;
 };
 
+// ─── Entry-Komponente mit eigenem Hook-Aufruf ────────────────────────────────
+function EntryItem({
+  entry,
+  top,
+  height,
+  columnIndex,
+  columnCount,
+  deleteEntry,
+  onLongPressEntry,
+  onPressEntry,
+}: {
+  entry: PlannerEntry;
+  top: number;
+  height: number;
+  columnIndex: number;
+  columnCount: number;
+  deleteEntry: (id: string) => void;
+  onLongPressEntry?: (entry: PlannerEntry) => void;
+  onPressEntry?: (entry: PlannerEntry) => void;
+}) {
+  const categoryConfig = useCategoryConfig(
+    entry.category,
+    entry.customCategoryId
+  );
+  const widthPercent = 100 / columnCount;
+  const GAP = 4;
+  const isVerySmall = height < 30;
+  const isSmall = height >= 30 && height < 60;
+  const isLarge = height >= 100;
+
+  return (
+    <View
+      style={{
+        position: "absolute",
+        top,
+        height,
+        left: `${columnIndex * widthPercent}%`,
+        width: `${widthPercent}%`,
+        paddingLeft: GAP,
+        paddingRight: GAP,
+        zIndex: 10,
+      }}
+    >
+      <SwipeableEntry
+        entry={entry}
+        onDelete={deleteEntry}
+        onEdit={() => onLongPressEntry?.(entry)}
+        onLongPress={() => onLongPressEntry?.(entry)}
+        onToggleDone={() => onPressEntry?.(entry)}
+      >
+        <View
+          style={{
+            backgroundColor: entry.doneAt
+              ? "#d1fae5"
+              : categoryConfig.lightColor,
+            borderRadius: 8,
+            padding: isVerySmall ? 4 : isSmall ? 4 : 8,
+            height: "100%",
+            borderLeftWidth: isVerySmall ? 3 : isSmall ? 3 : 4,
+            borderLeftColor: categoryConfig.color,
+            overflow: "hidden",
+          }}
+        >
+          <Text
+            style={{
+              fontWeight: "600",
+              fontSize: isVerySmall ? 10 : isSmall ? 10 : 14,
+            }}
+            numberOfLines={1}
+          >
+            {entry.title}
+          </Text>
+
+          {!isVerySmall && (
+            <Text style={{ fontSize: isSmall ? 10 : 12, color: "#555" }}>
+              {entry.startTime} – {entry.endTime}
+            </Text>
+          )}
+
+          {isLarge && entry.note && entry.note.trim().length > 0 && (
+            <Text
+              style={{
+                fontSize: 11,
+                color: "#777",
+                marginTop: 4,
+                fontStyle: "italic",
+                lineHeight: 15,
+              }}
+              numberOfLines={Math.floor((height - 60) / 15)}
+            >
+              {entry.note.trim()}
+            </Text>
+          )}
+        </View>
+      </SwipeableEntry>
+    </View>
+  );
+}
+
+// ─── Haupt-Komponente ─────────────────────────────────────────────────────────
 export default function DayTimeline({
   entries,
   onPressEntry,
@@ -36,36 +136,26 @@ export default function DayTimeline({
   const HOUR_HEIGHT = 80;
   const TIMELINE_HEIGHT = 24 * HOUR_HEIGHT;
   const scrollRef = useRef<ScrollView>(null);
-  const scrollOffsetRef = useRef(0); // Track scroll position
-  const [focusVisible, setFocusVisible] = useState(false); // ← NEU
+  const scrollOffsetRef = useRef(0);
+  const [focusVisible, setFocusVisible] = useState(false);
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
-  // Auto-Scroll Handler
   function handleAutoScroll(direction: "up" | "down") {
     if (!scrollRef.current) return;
-
     const newOffset =
       direction === "up"
         ? Math.max(0, scrollOffsetRef.current - 10)
         : Math.min(TIMELINE_HEIGHT - 600, scrollOffsetRef.current + 10);
-
     scrollOffsetRef.current = newOffset;
-
-    scrollRef.current.scrollTo({
-      y: newOffset,
-      animated: false,
-    });
+    scrollRef.current.scrollTo({ y: newOffset, animated: false });
   }
 
-  // Touch Handling
   const { highlightedSlot, isScrollLocked, setViewHeight, handlers } =
     useTimelineTouch({
       hourHeight: HOUR_HEIGHT,
       scrollOffset: scrollOffsetRef.current,
       onLongPress: (slot: any) => {
-        // ✅ Slot hat jetzt Start + End!
-
         if (slot && onLongPressBackground) {
           const startTime = `${String(
             Math.floor(slot.startMinutes / 60)
@@ -77,8 +167,7 @@ export default function DayTimeline({
             2,
             "0"
           )}:${String(slot.endMinutes % 60).padStart(2, "0")}`;
-
-          onLongPressBackground(startTime, endTime); // ✅ Pass both!
+          onLongPressBackground(startTime, endTime);
         } else {
           onLongPressBackground?.();
         }
@@ -86,7 +175,6 @@ export default function DayTimeline({
       onAutoScroll: handleAutoScroll,
     });
 
-  // Prepared Entries
   const preparedEntries = useMemo(() => {
     const timed: TimedEntry[] = entries
       .filter((e) => e.startTime)
@@ -95,35 +183,26 @@ export default function DayTimeline({
         const endMin = e.endTime
           ? timeToMinutes(e.endTime)
           : startMin + (e.durationMinute ?? 30);
-
         return { ...e, startMin, endMin };
       });
-
     const groups = groupOverlappingEntries(timed);
     return assignColumns(groups);
   }, [entries]);
 
-  // Auto-Scroll to current time
   const scrollToFocus = useCallback(() => {
     requestAnimationFrame(() => {
       const now = new Date();
       const minutes = now.getHours() * 60 + now.getMinutes();
       const y = (minutes / 60) * HOUR_HEIGHT - 2 * HOUR_HEIGHT;
       const offset = Math.max(0, y);
-
       scrollOffsetRef.current = offset;
-      scrollRef.current?.scrollTo({
-        y: offset,
-        animated: true,
-      });
+      scrollRef.current?.scrollTo({ y: offset, animated: true });
     });
   }, [mode]);
 
   useFocusEffect(
     useCallback(() => {
-      if (mode === "focus") {
-        scrollToFocus();
-      }
+      if (mode === "focus") scrollToFocus();
     }, [mode])
   );
 
@@ -139,16 +218,6 @@ export default function DayTimeline({
       >
         <Text style={{ fontSize: 16, fontWeight: "600" }}>Kalender</Text>
         <View style={{ flexDirection: "row", gap: 12 }}>
-          {/* Scroll Mode Toggle */}
-          {/* <Pressable
-            onPress={() => setMode(mode === "focus" ? "full" : "focus")}
-          >
-            <Text style={{ color: "#555", fontSize: 14 }}>
-              {mode === "focus" ? "Fokus" : "Ganzer Tag"}
-            </Text>
-          </Pressable> */}
-
-          {/* Focus Screen Button */}
           <Pressable onPress={() => setFocusVisible(true)}>
             <Text style={{ color: "#3b8995", fontWeight: "600", fontSize: 14 }}>
               Fokus Modus
@@ -160,7 +229,7 @@ export default function DayTimeline({
       {/* Timeline */}
       <ScrollView
         ref={scrollRef}
-        scrollEnabled={!isScrollLocked} // WICHTIG: Dynamisch lock/unlock
+        scrollEnabled={!isScrollLocked}
         nestedScrollEnabled={true}
         onScroll={(e) => {
           scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
@@ -172,10 +241,7 @@ export default function DayTimeline({
           if (mode === "focus") scrollToFocus();
         }}
         style={{ flex: 1 }}
-        contentContainerStyle={{
-          //  height: TIMELINE_HEIGHT,
-          paddingBottom: insets.bottom,
-        }}
+        contentContainerStyle={{ paddingBottom: insets.bottom }}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ flexDirection: "row" }}>
@@ -203,11 +269,11 @@ export default function DayTimeline({
               position: "relative",
             }}
           >
+            {/* Grid Lines */}
             {Array.from({ length: 24 * 4 }).map((_, i) => {
               const minutes = i * 30;
               const isHour = minutes % 60 === 0;
               const isHalfHour = minutes % 30 === 0;
-
               return (
                 <View
                   key={i}
@@ -226,6 +292,7 @@ export default function DayTimeline({
                 />
               );
             })}
+
             {/* Interactive Background */}
             <View
               {...handlers}
@@ -262,7 +329,6 @@ export default function DayTimeline({
                   pointerEvents: "none",
                 }}
               >
-                {/* Zeit-Label */}
                 <View
                   style={{
                     position: "absolute",
@@ -278,13 +344,12 @@ export default function DayTimeline({
                     style={{ fontSize: 10, color: "white", fontWeight: "600" }}
                   >
                     {Math.floor(highlightedSlot.startMinutes / 60)}:
-                    {String(highlightedSlot.startMinutes % 60).padStart(2, "0")}{" "}
-                    - {Math.floor(highlightedSlot.endMinutes / 60)}:
+                    {String(highlightedSlot.startMinutes % 60).padStart(2, "0")}
+                    {" - "}
+                    {Math.floor(highlightedSlot.endMinutes / 60)}:
                     {String(highlightedSlot.endMinutes % 60).padStart(2, "0")}
                   </Text>
                 </View>
-
-                {/* Visual Indicator: Scroll ist locked */}
                 <View
                   style={{
                     position: "absolute",
@@ -299,87 +364,32 @@ export default function DayTimeline({
               </View>
             )}
 
-            {/* Entries */}
+            {/* Entries — jede in eigener Komponente damit useCategoryConfig legal ist */}
             {preparedEntries.map((entry) => {
-              const categoryConfig = getCategoryConfig(entry.category);
-
               const { startMin, endMin, columnIndex, columnCount } = entry;
               const durMin = Math.max(endMin - startMin, 0);
-              //   const relativeStart = startMin - startHour * 60;
-
-              //   if (relativeStart + durMin < 0 || relativeStart > totalMinutes) {
-              //     return null;
-              //   }
-
               const top = (startMin / 60) * HOUR_HEIGHT;
               const height = (durMin / 60) * HOUR_HEIGHT;
-              const widthPercent = 100 / columnCount;
-              const GAP = 4;
-
-              const isVerySmall = height < 30;
-              const isSmall = height >= 30 && height < 60;
-              const isNormal = height >= 60;
 
               return (
-                <View
+                <EntryItem
                   key={entry.id}
-                  style={{
-                    position: "absolute",
-                    top,
-                    height,
-                    left: `${columnIndex * widthPercent}%`,
-                    width: `${widthPercent}%`,
-                    paddingLeft: GAP,
-                    paddingRight: GAP,
-                    zIndex: 10,
-                  }}
-                >
-                  <SwipeableEntry
-                    entry={entry}
-                    onDelete={deleteEntry}
-                    onEdit={() => onLongPressEntry?.(entry)}
-                    onLongPress={() => onLongPressEntry?.(entry)}
-                    onToggleDone={() => onPressEntry?.(entry)}
-                  >
-                    <View
-                      style={{
-                        backgroundColor: entry.doneAt
-                          ? "#d1fae5"
-                          : categoryConfig.lightColor,
-                        borderRadius: 8,
-                        padding: isVerySmall ? 4 : isSmall ? 4 : 8,
-                        height: isVerySmall ? "100%" : "100%",
-                        borderLeftWidth: isVerySmall ? 3 : isSmall ? 3 : 4,
-                        borderLeftColor: categoryConfig.color,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontWeight: "600",
-                          fontSize: isVerySmall ? 10 : isSmall ? 10 : 14,
-                        }}
-                      >
-                        {entry.title}
-                      </Text>
-                      {!isVerySmall && (
-                        <Text
-                          style={{
-                            fontSize: isSmall ? 10 : 12,
-                            color: "#555",
-                          }}
-                        >
-                          {entry.startTime} – {entry.endTime}
-                        </Text>
-                      )}
-                    </View>
-                  </SwipeableEntry>
-                </View>
+                  entry={entry}
+                  top={top}
+                  height={height}
+                  columnIndex={columnIndex}
+                  columnCount={columnCount}
+                  deleteEntry={deleteEntry}
+                  onLongPressEntry={onLongPressEntry}
+                  onPressEntry={onPressEntry}
+                />
               );
             })}
           </View>
         </View>
       </ScrollView>
-      {/* ✨ Focus Screen Modal */}
+
+      {/* Focus Screen Modal */}
       <FocusScreen
         visible={focusVisible}
         entries={entries}

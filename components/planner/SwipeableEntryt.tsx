@@ -1,5 +1,6 @@
 // components/planner/SwipeableEntryt.tsx
 import { PlannerEntry } from "@/types/planner";
+import * as Haptics from "expo-haptics";
 import React, { useRef } from "react";
 import {
   Alert,
@@ -20,8 +21,8 @@ type SwipeableEntryProps = {
   children: React.ReactNode;
 };
 
-const DELETE_THRESHOLD = -80;
-const DONE_THRESHOLD = 120;
+const DONE_THRESHOLD = 100;
+const DELETE_THRESHOLD = 140;
 
 export function SwipeableEntry({
   entry,
@@ -32,108 +33,137 @@ export function SwipeableEntry({
   children,
 }: SwipeableEntryProps) {
   const translateX = useRef(new Animated.Value(0)).current;
-  const fillWidth = useRef(new Animated.Value(0)).current;
-  const currentX = useRef(0);
+  const doneFill = useRef(new Animated.Value(0)).current;
+  const deleteFill = useRef(new Animated.Value(0)).current;
+  const hasTriggered = useRef(false);
+
+  // Nur Animationen zurücksetzen — hasTriggered bleibt unangetastet
+  function resetAnimations(duration = 250) {
+    Animated.parallel([
+      Animated.spring(translateX, { toValue: 0, useNativeDriver: false }),
+      Animated.timing(doneFill, {
+        toValue: 0,
+        duration,
+        useNativeDriver: false,
+      }),
+      Animated.timing(deleteFill, {
+        toValue: 0,
+        duration,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }
+
+  // Vollständiger Reset inkl. hasTriggered
+  function resetAll(duration = 250) {
+    hasTriggered.current = false;
+    resetAnimations(duration);
+  }
 
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) =>
         Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
-      onPanResponderGrant: () => {
-        currentX.current = (translateX as any)._value;
-      },
-      onPanResponderMove: (_, g) => {
-        const newX = currentX.current + g.dx;
-        if (newX > 0) {
-          translateX.setValue(0);
-          fillWidth.setValue(Math.min(DONE_THRESHOLD, newX));
-        } else {
-          translateX.setValue(newX);
-          fillWidth.setValue(0);
-        }
-      },
-      onPanResponderRelease: (_, g) => {
-        const curX = (translateX as any)._value;
-        const curFill = (fillWidth as any)._value;
 
-        // Swipe Left → Delete
-        if (curX < DELETE_THRESHOLD / 2) {
-          Animated.spring(translateX, {
-            toValue: DELETE_THRESHOLD,
-            useNativeDriver: false,
-          }).start();
+      onPanResponderGrant: () => {
+        hasTriggered.current = false;
+      },
+
+      onPanResponderMove: (_, g) => {
+        if (hasTriggered.current) return;
+        const dx = g.dx;
+
+        if (dx > 0) {
+          doneFill.setValue(Math.min(dx, DONE_THRESHOLD));
+          deleteFill.setValue(0);
+        } else {
+          deleteFill.setValue(Math.min(-dx, DELETE_THRESHOLD));
+          doneFill.setValue(0);
         }
-        // Swipe Right → Done
-        else if (curFill > DONE_THRESHOLD * 0.5) {
-          Animated.timing(fillWidth, {
-            toValue: 300,
-            duration: 150,
+      },
+
+      onPanResponderRelease: (_, g) => {
+        if (hasTriggered.current) return;
+        const dx = g.dx;
+
+        if (dx > DONE_THRESHOLD * 0.6) {
+          // ── Done ────────────────────────────────────────────────────────
+          hasTriggered.current = true;
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Animated.timing(doneFill, {
+            toValue: 500,
+            duration: 200,
             useNativeDriver: false,
           }).start(() => {
             onToggleDone();
-            Animated.timing(fillWidth, {
-              toValue: 0,
-              duration: 300,
-              useNativeDriver: false,
-            }).start();
-            Animated.spring(translateX, {
-              toValue: 0,
-              useNativeDriver: false,
-            }).start();
+            resetAll(250);
           });
+        } else if (dx < -DELETE_THRESHOLD * 0.6) {
+          // ── Delete: Animationen zurück, DANN Alert ───────────────────────
+          hasTriggered.current = true;
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+          // Nur Animationen zurücksetzen, hasTriggered bleibt true
+          resetAnimations(200);
+
+          setTimeout(() => {
+            Alert.alert(
+              "Eintrag löschen?",
+              `"${entry.title}" wirklich löschen?`,
+              [
+                {
+                  text: "Abbrechen",
+                  style: "cancel",
+                  onPress: () => {
+                    hasTriggered.current = false; // jetzt erst freigeben
+                  },
+                },
+                {
+                  text: "Löschen",
+                  style: "destructive",
+                  onPress: () => {
+                    onDelete(entry.id);
+                    hasTriggered.current = false;
+                  },
+                },
+              ]
+            );
+          }, 220);
+        } else {
+          // ── Zurückschnappen ──────────────────────────────────────────────
+          resetAll(200);
         }
-        // Snap back
-        else {
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: false,
-          }).start();
-          Animated.timing(fillWidth, {
-            toValue: 0,
-            duration: 150,
-            useNativeDriver: false,
-          }).start();
-        }
+      },
+
+      onPanResponderTerminate: () => {
+        resetAll(200);
       },
     })
   ).current;
 
-  const fillOpacity = fillWidth.interpolate({
+  const doneOpacity = doneFill.interpolate({
     inputRange: [0, DONE_THRESHOLD],
-    outputRange: [0, 0.35],
+    outputRange: [0, 0.5],
+    extrapolate: "clamp",
+  });
+  const deleteOpacity = deleteFill.interpolate({
+    inputRange: [0, DELETE_THRESHOLD],
+    outputRange: [0, 0.5],
+    extrapolate: "clamp",
+  });
+  const doneIconOpacity = doneFill.interpolate({
+    inputRange: [0, DONE_THRESHOLD * 0.4, DONE_THRESHOLD],
+    outputRange: [0, 0, 1],
+    extrapolate: "clamp",
+  });
+  const deleteIconOpacity = deleteFill.interpolate({
+    inputRange: [0, DELETE_THRESHOLD * 0.4, DELETE_THRESHOLD],
+    outputRange: [0, 0, 1],
     extrapolate: "clamp",
   });
 
-  function handleDelete() {
-    Alert.alert("Löschen?", `"${entry.title}" wirklich löschen?`, [
-      {
-        text: "Abbrechen",
-        style: "cancel",
-        onPress: () => {
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: false,
-          }).start();
-        },
-      },
-      {
-        text: "Löschen",
-        style: "destructive",
-        onPress: () => onDelete(entry.id),
-      },
-    ]);
-  }
-
   return (
     <View style={styles.container}>
-      {/* Delete Button */}
-      <View style={styles.deleteContainer}>
-        <Pressable onPress={handleDelete} style={styles.deleteButton}>
-          <Text style={styles.deleteText}>🗑️</Text>
-        </Pressable>
-      </View>
-
-      {/* Swipeable Content */}
       <Animated.View
         {...panResponder.panHandlers}
         style={[styles.content, { transform: [{ translateX }] }]}
@@ -147,14 +177,45 @@ export function SwipeableEntry({
           {children}
         </Pressable>
 
-        {/* Green fill overlay */}
+        {/* Done Overlay — grün von links */}
         <Animated.View
           pointerEvents="none"
           style={[
-            styles.fillOverlay,
-            { width: fillWidth, opacity: fillOpacity },
+            styles.overlay,
+            styles.doneOverlay,
+            { width: doneFill, opacity: doneOpacity },
           ]}
         />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.iconContainer,
+            styles.doneIcon,
+            { opacity: doneIconOpacity },
+          ]}
+        >
+          <Text style={styles.iconText}>✓</Text>
+        </Animated.View>
+
+        {/* Delete Overlay — rot von rechts */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.overlay,
+            styles.deleteOverlay,
+            { width: deleteFill, opacity: deleteOpacity },
+          ]}
+        />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.iconContainer,
+            styles.deleteIcon,
+            { opacity: deleteIconOpacity },
+          ]}
+        >
+          <Text style={styles.iconText}></Text>
+        </Animated.View>
       </Animated.View>
     </View>
   );
@@ -166,35 +227,39 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     flex: 1,
   },
-  deleteContainer: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: 80,
-    backgroundColor: "#fee2e2",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  deleteButton: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  deleteText: {
-    fontSize: 20,
-  },
   content: {
     flex: 1,
     position: "relative",
   },
-  fillOverlay: {
+  overlay: {
     position: "absolute",
-    left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: "#d1fae5",
     borderRadius: 8,
+  },
+  doneOverlay: {
+    left: 0,
+    backgroundColor: "#d1fae5",
+  },
+  deleteOverlay: {
+    right: 0,
+    backgroundColor: "#fee2e2",
+  },
+  iconContainer: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 48,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  doneIcon: {
+    left: 8,
+  },
+  deleteIcon: {
+    right: 8,
+  },
+  iconText: {
+    fontSize: 20,
   },
 });

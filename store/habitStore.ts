@@ -1,6 +1,4 @@
 // store/habitStore.ts
-// Schreibt Habits lokal (AsyncStorage) + in Supabase.
-// Offline-first: lokale Änderungen sofort, Supabase im Hintergrund.
 import { sanitizeCategory } from "@/constants/categories";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser, syncUpsert } from "@/lib/sync";
@@ -19,7 +17,7 @@ import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 import { useUserStore } from "./userStore";
 
-// ─── Mapping: Habit → Supabase row ───────────────────────────────────────────
+// ─── Supabase Mappings ────────────────────────────────────────────────────────
 async function toRow(h: Habit) {
   const user = await getCurrentUser();
   if (!user) return null;
@@ -29,7 +27,7 @@ async function toRow(h: Habit) {
     title: h.title,
     kind: h.kind,
     category: h.category ?? null,
-    custom_category_id: h.customCategoryId ?? null, // ← NEU
+    custom_category_id: h.customCategoryId ?? null,
     unit: h.unit ?? null,
     daily_target: h.dailyTarget ?? null,
     schedule: h.schedule ?? null,
@@ -38,14 +36,13 @@ async function toRow(h: Habit) {
   };
 }
 
-// ─── Mapping: Supabase row → Habit ───────────────────────────────────────────
 function fromRow(r: any): Habit {
   return {
     id: r.id,
     title: r.title,
     kind: r.kind ?? "boolean",
     category: sanitizeCategory(r.category),
-    customCategoryId: r.custom_category_id ?? undefined, // ← NEU
+    customCategoryId: r.custom_category_id ?? undefined,
     unit: r.unit ?? undefined,
     dailyTarget: r.daily_target ?? undefined,
     schedule: r.schedule ?? undefined,
@@ -55,15 +52,56 @@ function fromRow(r: any): Habit {
   };
 }
 
-// ─── Lokale + Cloud-Persistenz ────────────────────────────────────────────────
-function saveLocal(habits: Habit[]) {
+// ─── Persistenz ───────────────────────────────────────────────────────────────
+function saveLocal(habits: Habit[]): void {
   storage.habits.save(habits);
 }
 
-async function saveAndSync(habits: Habit[], changed: Habit) {
+async function saveAndSync(habits: Habit[], changed: Habit): Promise<void> {
   saveLocal(habits);
   const row = await toRow(changed);
   if (row) syncUpsert("habits", row);
+}
+
+// ─── Widget-Sync: lazy, kein Circular Import ──────────────────────────────────
+function syncWidget(habits: Habit[]): void {
+  setTimeout(() => {
+    try {
+      const { syncWidgetData } = require("@/modules/widgetBridge");
+      const { useFocusStore } = require("./focusStore");
+      const { useUserStore: userStore } = require("./userStore");
+
+      const { sessions, stats } = useFocusStore.getState();
+      const { name } = userStore.getState();
+
+      const todayTs = getTodayTimestamp();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const todayFocusMinutes = sessions
+        .filter((s: any) => s.startedAt >= todayStart.getTime())
+        .reduce(
+          (sum: number, s: any) =>
+            sum + Math.floor((s.focusSeconds ?? s.durationSeconds) / 60),
+          0
+        );
+
+      const todayHabits = habits.filter((h) => isScheduledForToday(h.schedule));
+
+      syncWidgetData({
+        streak: stats.currentStreak,
+        todayFocusMinutes,
+        habitsCompleted: todayHabits.filter((h) =>
+          h.completedDates.includes(todayTs)
+        ).length,
+        habitsTotal: todayHabits.length,
+        userName: name && name !== "_onboarded" ? name : null,
+        lastUpdated: new Date().toISOString(),
+      });
+    } catch {
+      // best-effort — nie die App blockieren
+    }
+  }, 0);
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -108,7 +146,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       unit,
       dailyTarget,
       category,
-      customCategoryId, // ← NEU
+      customCategoryId,
       schedule,
       createdAt: Date.now(),
       completedDates: [],
@@ -132,16 +170,15 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     const updated = get().habits.filter((h) => h.id !== habitId);
     set({ habits: updated });
     saveLocal(updated);
-    // Aus Supabase löschen
-    supabase.auth
-      .getUser()
-      .then(({ data: { user } }) => {
-        if (user)
+    getCurrentUser()
+      .then((user) => {
+        if (user) {
           supabase
             .from("habits")
             .delete()
             .eq("id", habitId)
             .eq("user_id", user.id);
+        }
       })
       .catch(() => {});
   },
@@ -150,12 +187,14 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     const timestamp = getTodayTimestamp();
     const updated = get().habits.map((habit) => {
       if (habit.id !== habitId) return habit;
-      if (habit.kind === "boolean")
-        return habitService.toggleBooleanHabit(habit, timestamp);
-      return habitService.incrementCountHabit(habit, 1, timestamp);
+      return habit.kind === "boolean"
+        ? habitService.toggleBooleanHabit(habit, timestamp)
+        : habitService.incrementCountHabit(habit, 1, timestamp);
     });
     set({ habits: updated });
-    const { name } = useUserStore.getState(); // im store über zustand getState
+
+    // Streak-at-Risk Notification
+    const { name } = useUserStore.getState();
     const allTodayDone = updated
       .filter((h) => isScheduledForToday(h.schedule))
       .every((h) => h.completedDates.includes(getTodayTimestamp()));
@@ -163,7 +202,6 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     if (allTodayDone) {
       cancelStreakAtRiskReminder();
     } else {
-      // Habit mit höchstem Streak als Anker nehmen
       const topHabit = updated.reduce(
         (a, b) => (getStreak(b) > getStreak(a) ? b : a),
         updated[0]
@@ -176,37 +214,43 @@ export const useHabitStore = create<HabitState>((set, get) => ({
         });
       }
     }
+
     const changed = updated.find((h) => h.id === habitId);
     if (changed) saveAndSync(updated, changed);
+
+    // Widget nach Toggle aktualisieren
+    syncWidget(updated);
   },
 
   increaseAmount: (habitId, increment) => {
     const timestamp = getTodayTimestamp();
-    const updated = get().habits.map((habit) => {
-      if (habit.id !== habitId) return habit;
-      return habitService.incrementCountHabit(habit, increment, timestamp);
-    });
+    const updated = get().habits.map((habit) =>
+      habit.id !== habitId
+        ? habit
+        : habitService.incrementCountHabit(habit, increment, timestamp)
+    );
     set({ habits: updated });
     const changed = updated.find((h) => h.id === habitId);
     if (changed) saveAndSync(updated, changed);
+    syncWidget(updated);
   },
 
   setAmountForToday: (habitId, value) => {
     const timestamp = getTodayTimestamp();
-    const updated = get().habits.map((habit) => {
-      if (habit.id !== habitId) return habit;
-      return habitService.setCountAmount(habit, value, timestamp);
-    });
+    const updated = get().habits.map((habit) =>
+      habit.id !== habitId
+        ? habit
+        : habitService.setCountAmount(habit, value, timestamp)
+    );
     set({ habits: updated });
     const changed = updated.find((h) => h.id === habitId);
     if (changed) saveAndSync(updated, changed);
+    syncWidget(updated);
   },
 
   loadHabits: async () => {
-    // 1. Erst lokal laden (sofort, kein Netz nötig)
     const local = await storage.habits.load();
 
-    // 2. Aus Supabase laden falls eingeloggt
     try {
       const user = await getCurrentUser();
       if (user) {
@@ -224,7 +268,6 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       }
     } catch {}
 
-    // 3. Fallback: lokale Daten
     if (local) {
       const normalized = local.map((h) => ({
         ...h,

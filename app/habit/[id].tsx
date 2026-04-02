@@ -147,7 +147,12 @@ export default function HabitEditScreen() {
             <Text style={s.closeBtnText}>✕</Text>
           </Pressable>
           <View style={s.headerCenter}>
-            <CategoryIcon category={category} size={20} containerSize={40} />
+            <CategoryIcon
+              category={category}
+              customCategoryId={habit.customCategoryId}
+              size={20}
+              containerSize={40}
+            />
             <Text style={s.headerSub}>Bearbeiten</Text>
           </View>
           <Pressable

@@ -2,6 +2,7 @@
 // Der Fortschritts-Screen — Warum der User täglich zurückkommt.
 // Zeigt: Fokus-Wochenstunden, Streak-Heatmap, Habit-Streaks, Bestzeiten.
 
+import { WeeklyReviewSheet } from "@/components/weekly/WeeklyReviewSheet";
 import { getCategoryConfig } from "@/constants/categories";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useHabits } from "@/hooks/useHabits";
@@ -10,8 +11,16 @@ import { useUserStore } from "@/store/userStore";
 import { getTodayTimestamp } from "@/utils/dateUtils";
 import { getCompletionRate } from "@/utils/getStreak";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useEffect, useMemo } from "react";
-import { Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Dimensions,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const SCREEN_W = Dimensions.get("window").width;
@@ -293,7 +302,12 @@ function StatCard({
     </View>
   );
 }
-
+function getWeekNumber(d: Date): number {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
 // ─── Hauptscreen ──────────────────────────────────────────────────────────────
 export default function FortschrittScreen() {
   const insets = useSafeAreaInsets();
@@ -305,8 +319,22 @@ export default function FortschrittScreen() {
   const loadStats = useFocusStore((s) => s.loadStats);
   const prefs = useUserStore((s) => s.prefs);
 
+  const [reviewVisible, setReviewVisible] = useState(false);
+
   useEffect(() => {
     loadStats();
+    const now = new Date();
+    const isSunday = now.getDay() === 0;
+    const isEvening = now.getHours() >= 17;
+    const lastReviewKey = "last_weekly_review";
+
+    AsyncStorage.getItem(lastReviewKey).then((last) => {
+      const thisWeek = `${now.getFullYear()}-W${getWeekNumber(now)}`;
+      if (isSunday && isEvening && last !== thisWeek) {
+        setReviewVisible(true);
+        AsyncStorage.setItem(lastReviewKey, thisWeek);
+      }
+    });
   }, []);
 
   const streak = focusStats.currentStreak;
@@ -397,11 +425,31 @@ export default function FortschrittScreen() {
   const styles = makeStyles(c);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+    // Im JSX — Header-Bereich:
+    <View style={styles.header}>
+      <View style={{ flex: 1 }}>
         <Text style={styles.headerTitle}>Fortschritt</Text>
         <Text style={styles.headerSub}>Dein Wachstum auf einen Blick</Text>
       </View>
+      <Pressable
+        onPress={() => setReviewVisible(true)}
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 19,
+          backgroundColor: c.dark ? "#2d1a00" : "#fffbeb",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <Ionicons name="trophy-outline" size={20} color="#f59e0b" />
+      </Pressable>
+
+      {/* Sheet außerhalb des Headers, direkt im root View */}
+      <WeeklyReviewSheet
+        visible={reviewVisible}
+        onClose={() => setReviewVisible(false)}
+      />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
