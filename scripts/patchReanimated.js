@@ -19,7 +19,8 @@ function patchDir(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) patchDir(full);
-    else if (entry.name.endsWith(".cpp")) patchFolly(full);
+    else if (entry.name.endsWith(".cpp") || entry.name.endsWith(".mm"))
+      patchFolly(full);
   }
 }
 
