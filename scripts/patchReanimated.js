@@ -5,7 +5,7 @@ const path = require("path");
 const FOLLY_FIX =
   "// withFollyCoroutineFix\n#define FOLLY_CFG_NO_COROUTINES 1\n#undef FOLLY_HAS_COROUTINES\n#define FOLLY_HAS_COROUTINES 0\n";
 
-// Fix 1: FOLLY_HAS_COROUTINES für alle .cpp Dateien
+// Fix 1: FOLLY_HAS_COROUTINES für alle .cpp und .mm Dateien
 function patchFolly(filePath) {
   if (!fs.existsSync(filePath)) return;
   let content = fs.readFileSync(filePath, "utf8");
@@ -42,8 +42,6 @@ function patchMountHook(cppDir) {
     let content = fs.readFileSync(headerPath, "utf8");
     const before = content;
 
-    // Ersetze komplette shadowTreeDidMount Deklaration (mit oder ohne double mountTime)
-    // durch Version ohne 'override' und ohne double Parameter
     content = content.replace(
       /void shadowTreeDidMount\([^)]*\)\s*noexcept\s*override\s*;/gs,
       "void shadowTreeDidMount(\n      RootShadowNode::Shared const &rootShadowNode) noexcept;"
@@ -64,14 +62,11 @@ function patchMountHook(cppDir) {
     let content = fs.readFileSync(cppPath, "utf8");
     const before = content;
 
-    // Ersetze komplette shadowTreeDidMount Definition (mit oder ohne double)
-    // durch Signatur ohne double Parameter — matcht .h
     content = content.replace(
       /void ReanimatedMountHook::shadowTreeDidMount\([^)]*\)\s*noexcept\s*\{/gs,
       "void ReanimatedMountHook::shadowTreeDidMount(\n    RootShadowNode::Shared const &rootShadowNode) noexcept {"
     );
 
-    // Falls mountTime noch als Variable im Body vorkommt, durch 0.0 ersetzen
     content = content.replace(/\bmountTime\b/g, "0.0");
 
     if (content !== before) {
@@ -86,16 +81,20 @@ function patchMountHook(cppDir) {
 }
 
 const root = process.cwd();
-const cppDir = path.join(
-  root,
-  "node_modules/react-native-reanimated/Common/cpp"
-);
+const reanimatedRoot = path.join(root, "node_modules/react-native-reanimated");
 
-if (!fs.existsSync(cppDir)) {
+if (!fs.existsSync(reanimatedRoot)) {
   console.log("[patch] react-native-reanimated nicht gefunden, überspringe");
   process.exit(0);
 }
 
-patchDir(cppDir);
-patchMountHook(cppDir);
+// Patche Common/cpp (enthält .cpp Dateien)
+patchDir(path.join(reanimatedRoot, "Common/cpp"));
+
+// Patche apple/ (enthält .mm Dateien wie REANodesManager.mm, REAModule.mm)
+patchDir(path.join(reanimatedRoot, "apple"));
+
+// Fix ReanimatedMountHook Signatur
+patchMountHook(path.join(reanimatedRoot, "Common/cpp"));
+
 console.log("[patch] Fertig");
