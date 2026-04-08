@@ -23,14 +23,57 @@ function patchDir(dir) {
   }
 }
 
+function patchMountHook(cppDir) {
+  const headerPath = path.join(
+    cppDir,
+    "reanimated/Fabric/ReanimatedMountHook.h"
+  );
+  const cppPath = path.join(
+    cppDir,
+    "reanimated/Fabric/ReanimatedMountHook.cpp"
+  );
+
+  if (fs.existsSync(headerPath)) {
+    let content = fs.readFileSync(headerPath, "utf8");
+    const before = content;
+    // Entferne double mountTime Parameter UND override
+    content = content.replace(
+      /void shadowTreeDidMount\([\s\S]*?\)\s*noexcept\s*override\s*;/,
+      "void shadowTreeDidMount(\n      RootShadowNode::Shared const &rootShadowNode) noexcept;"
+    );
+    if (content !== before) {
+      fs.writeFileSync(headerPath, content);
+      console.log("[patch] Fixed ReanimatedMountHook.h");
+    }
+  }
+
+  if (fs.existsSync(cppPath)) {
+    let content = fs.readFileSync(cppPath, "utf8");
+    const before = content;
+    // Ersetze Funktionsdefinition — matche alles zwischen ( und ) noexcept {
+    content = content.replace(
+      /void ReanimatedMountHook::shadowTreeDidMount\([\s\S]*?\)\s*noexcept\s*\{/,
+      "void ReanimatedMountHook::shadowTreeDidMount(\n    RootShadowNode::Shared const &rootShadowNode) noexcept {"
+    );
+    // mountTime Variable ersetzen falls noch im Body
+    content = content.replace(/\bmountTime\b/g, "0.0");
+    if (content !== before) {
+      fs.writeFileSync(cppPath, content);
+      console.log("[patch] Fixed ReanimatedMountHook.cpp");
+    }
+  }
+}
+
 const reanimatedRoot = path.join(
   process.cwd(),
   "node_modules/react-native-reanimated"
 );
 if (!fs.existsSync(reanimatedRoot)) {
-  console.log("[patch] nicht gefunden");
+  console.log("[patch] react-native-reanimated nicht gefunden");
   process.exit(0);
 }
+
 patchDir(path.join(reanimatedRoot, "Common/cpp"));
 patchDir(path.join(reanimatedRoot, "apple"));
+patchMountHook(path.join(reanimatedRoot, "Common/cpp"));
 console.log("[patch] Fertig");
