@@ -33,33 +33,44 @@ function patchMountHook(cppDir) {
     "reanimated/Fabric/ReanimatedMountHook.cpp"
   );
 
+  // HEADER: Füge HighResTimeStamp mountTime Parameter hinzu + override
+  // RN 0.81.5 UIManagerMountHook::shadowTreeDidMount braucht diesen Parameter
   if (fs.existsSync(headerPath)) {
     let content = fs.readFileSync(headerPath, "utf8");
-    const before = content;
-    // Entferne double mountTime Parameter UND override
-    content = content.replace(
-      /void shadowTreeDidMount\([\s\S]*?\)\s*noexcept\s*override\s*;/,
-      "void shadowTreeDidMount(\n      RootShadowNode::Shared const &rootShadowNode) noexcept;"
-    );
-    if (content !== before) {
+    if (content.includes("HighResTimeStamp")) {
+      console.log("[patch] ReanimatedMountHook.h: already patched");
+    } else {
+      // Füge include für HighResTimeStamp hinzu
+      content = content.replace(
+        "#include <react/renderer/uimanager/UIManagerMountHook.h>",
+        "#include <react/renderer/uimanager/UIManagerMountHook.h>\n#include <react/renderer/runtimescheduler/RuntimeScheduler.h>"
+      );
+      // Ersetze Deklaration: füge Parameter + override hinzu
+      content = content.replace(
+        /void shadowTreeDidMount\(\s*RootShadowNode::Shared const &rootShadowNode\)\s*noexcept;/,
+        "void shadowTreeDidMount(\n      RootShadowNode::Shared const &rootShadowNode,\n      facebook::react::HighResTimeStamp mountTime) noexcept override;"
+      );
       fs.writeFileSync(headerPath, content);
-      console.log("[patch] Fixed ReanimatedMountHook.h");
+      console.log(
+        "[patch] Fixed ReanimatedMountHook.h (added HighResTimeStamp + override)"
+      );
     }
   }
 
+  // CPP: Füge mountTime Parameter zur Implementierung hinzu (wird nicht verwendet)
   if (fs.existsSync(cppPath)) {
     let content = fs.readFileSync(cppPath, "utf8");
-    const before = content;
-    // Ersetze Funktionsdefinition — matche alles zwischen ( und ) noexcept {
-    content = content.replace(
-      /void ReanimatedMountHook::shadowTreeDidMount\([\s\S]*?\)\s*noexcept\s*\{/,
-      "void ReanimatedMountHook::shadowTreeDidMount(\n    RootShadowNode::Shared const &rootShadowNode) noexcept {"
-    );
-    // mountTime Variable ersetzen falls noch im Body
-    content = content.replace(/\bmountTime\b/g, "0.0");
-    if (content !== before) {
+    if (content.includes("HighResTimeStamp")) {
+      console.log("[patch] ReanimatedMountHook.cpp: already patched");
+    } else {
+      content = content.replace(
+        /void ReanimatedMountHook::shadowTreeDidMount\(\s*RootShadowNode::Shared const &rootShadowNode\)\s*noexcept \{/,
+        "void ReanimatedMountHook::shadowTreeDidMount(\n    RootShadowNode::Shared const &rootShadowNode,\n    facebook::react::HighResTimeStamp /*mountTime*/) noexcept {"
+      );
       fs.writeFileSync(cppPath, content);
-      console.log("[patch] Fixed ReanimatedMountHook.cpp");
+      console.log(
+        "[patch] Fixed ReanimatedMountHook.cpp (added HighResTimeStamp param)"
+      );
     }
   }
 }
