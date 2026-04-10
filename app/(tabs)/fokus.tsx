@@ -2,6 +2,7 @@
 // FIXES:
 // 1. Sound-Button: keine inline SoundPills mehr — nur Icon + Label + Chevron
 // 2. Streak-Anzeige: effectiveStreak — zeigt 0 wenn lastFocusDate älter als gestern
+import { CoFocusLobby } from "@/components/focus/CoFocusLobby";
 import { FocusScreen } from "@/components/focus/FocusScreen";
 import { PomodoroSettingsSheet } from "@/components/focus/PomodoroSettingsSheet";
 import { ProjectPickerSheet } from "@/components/focus/ProjectPickerSheet";
@@ -525,7 +526,9 @@ export default function FokusScreen() {
             </Pressable>
 
             <Pressable
-              onPress={() => setCoFocusVisible(true)}
+              onPress={() => {
+                setCoFocusVisible(true);
+              }}
               style={[
                 startSettings.btn,
                 {
@@ -631,6 +634,14 @@ export default function FokusScreen() {
         </View>
       </ScrollView>
 
+      <CoFocusLobby
+        visible={coFocusVisible}
+        onSessionStart={() => {
+          setCoFocusVisible(false);
+          setTimeout(() => setFocusVisible(true), 200);
+        }}
+        onClose={() => setCoFocusVisible(false)}
+      />
       {/* ── Projekt-Auswahl (erscheint vor der Session) ── */}
       <ProjectPickerSheet
         visible={projectPickerVisible}

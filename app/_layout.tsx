@@ -1,5 +1,5 @@
 // app/_layout.tsx
-const DEV_BYPASS = __DEV__ && true;
+const DEV_BYPASS = __DEV__ && false;
 import { scheduleStreakAtRiskReminder } from "@/services/notificationService";
 import { scheduleWeeklyReviewNotification } from "@/services/weeklyReviewService";
 import { useAuthStore } from "@/store/authStore";
@@ -23,6 +23,7 @@ LogBox.ignoreLogs([
   "com.apple.healthkit Code=5",
   "Authorization not determined",
 ]);
+
 function AuthGuard() {
   const { isAuthReady, session } = useAuthStore();
   const router = useRouter();
@@ -108,7 +109,7 @@ export default function RootLayout() {
       setName("Dev User");
       loadMetrics();
       loadStats();
-      loadCustomCategories(); // ← NEU
+      loadCustomCategories();
       loadProjects();
       loadSessionNotes();
       return;
@@ -118,7 +119,7 @@ export default function RootLayout() {
       loadUser(),
       loadMetrics(),
       loadStats(),
-      loadCustomCategories(), // ← NEU
+      loadCustomCategories(),
       loadProjects(),
       loadSessionNotes(),
     ]);

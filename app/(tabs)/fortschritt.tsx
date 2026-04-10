@@ -4,6 +4,7 @@
 // 2. header style: flexDirection "row" + alignItems "center" — Trophy-Button sitzt neben dem Titel
 // 3. FocusHeatmap: cellSize auf SCREEN_W - 64 korrigiert (war zu groß, letzte Reihe überfloss)
 import { ProjectsCard } from "@/components/progress/ProjectsCard";
+import { SocialScreen } from "@/components/social/SocialScreen";
 import { WeeklyReviewSheet } from "@/components/weekly/WeeklyReviewSheet";
 import { getCategoryConfig } from "@/constants/categories";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -314,6 +315,7 @@ export default function FortschrittScreen() {
   const loadStats = useFocusStore((s) => s.loadStats);
 
   const [reviewVisible, setReviewVisible] = useState(false);
+  const [socialVisible, setSocialVisible] = useState(false);
 
   useEffect(() => {
     loadStats();
@@ -451,6 +453,23 @@ export default function FortschrittScreen() {
           <Text style={styles.headerTitle}>Fortschritt</Text>
           <Text style={styles.headerSub}>Dein Wachstum auf einen Blick</Text>
         </View>
+
+        <Pressable
+          onPress={() => setSocialVisible(true)}
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            backgroundColor: c.dark ? "#1e293b" : "#f1f5f9",
+            justifyContent: "center",
+            alignItems: "center",
+            marginRight: 8,
+          }}
+          hitSlop={8}
+        >
+          <Ionicons name="people-outline" size={20} color="#3b8995" />
+        </Pressable>
+
         <Pressable
           onPress={() => setReviewVisible(true)}
           style={{
@@ -471,6 +490,10 @@ export default function FortschrittScreen() {
       <WeeklyReviewSheet
         visible={reviewVisible}
         onClose={() => setReviewVisible(false)}
+      />
+      <SocialScreen
+        visible={socialVisible}
+        onClose={() => setSocialVisible(false)}
       />
 
       {/* ── Content ── */}

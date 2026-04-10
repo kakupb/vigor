@@ -7,7 +7,9 @@
 
 import { useAppColors } from "@/hooks/useAppColors";
 import { useProjectStore } from "@/store/projectStore";
+import { useSessionNoteStore } from "@/store/sessionNoteStore";
 import { PROJECT_COLORS as _PROJECT_COLORS, Project } from "@/types/project";
+import { NextStep } from "@/types/sessionNote";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
@@ -97,11 +99,13 @@ const cd = StyleSheet.create({
 function ProjectRow({
   project,
   sessionMinutes,
+  lastNote,
   onPress,
   dark,
 }: {
   project: Project;
   sessionMinutes: number;
+  lastNote?: { score: number; nextSteps: NextStep[] };
   onPress: () => void;
   dark: boolean;
 }) {
@@ -189,6 +193,8 @@ export function ProjectPickerSheet({
 
   const slideAnim = useRef(new Animated.Value(300)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  const getLastByProjectId = useSessionNoteStore((s) => s.getLastByProjectId);
 
   useEffect(() => {
     if (visible) {
@@ -427,6 +433,7 @@ export function ProjectPickerSheet({
                         key={p.id}
                         project={p}
                         sessionMinutes={getSessionMinutes(p.id)}
+                        lastNote={getLastByProjectId(p.id)} // ← NEU
                         onPress={() => handleSelect(p)}
                         dark={c.dark}
                       />

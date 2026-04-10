@@ -206,6 +206,41 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       if (row) syncUpsert("focus_sessions", row);
     });
     syncStats(updatedStats);
+    setTimeout(() => {
+      try {
+        const { useSocialStore } = require("@/store/socialStore");
+        const { useUserStore } = require("./userStore");
+        const { useHabitStore } = require("./habitStore");
+
+        const { name } = useUserStore.getState();
+        const { habits } = useHabitStore.getState();
+
+        const now = new Date();
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+        weekStart.setHours(0, 0, 0, 0);
+
+        const sessions = get().sessions;
+        const weekMinutes = sessions
+          .filter((s: any) => s.startedAt >= weekStart.getTime())
+          .reduce(
+            (sum: number, s: any) =>
+              sum + Math.floor((s.focusSeconds ?? s.durationSeconds) / 60),
+            0
+          );
+
+        useSocialStore.getState().syncMyStats({
+          weekMinutes,
+          totalHours: Math.floor(updatedStats.totalMinutes / 60),
+          currentStreak: updatedStats.currentStreak,
+          bestStreak: updatedStats.bestStreak,
+          displayName: name && name !== "_onboarded" ? name : "Anonym",
+          avatarColor: "#3b8995",
+        });
+      } catch {
+        // best-effort
+      }
+    }, 0);
     get().updateStreak();
 
     // Widget nach Streak-Update syncen (nächster Tick damit updateStreak fertig ist)

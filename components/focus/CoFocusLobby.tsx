@@ -251,7 +251,7 @@ export function CoFocusLobby({ visible, onSessionStart, onClose }: Props) {
   const [joinCode, setJoinCode] = useState("");
   const [noteMode, setNoteMode] = useState<NoteMode>("individual");
   const [copied, setCopied] = useState(false);
-  const slideAnim = useRef(new Animated.Value(800)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
@@ -360,6 +360,7 @@ export function CoFocusLobby({ visible, onSessionStart, onClose }: Props) {
         dark={c.dark}
         isHost
       />
+      {error && <Text style={{ color: "#ef4444", fontSize: 13 }}>{error}</Text>}
       <Pressable
         onPress={handleCreate}
         disabled={isLoading}
@@ -554,11 +555,7 @@ export function CoFocusLobby({ visible, onSessionStart, onClose }: Props) {
       : HomeView;
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-    >
+    <Modal visible={visible} animationType="none" presentationStyle="pageSheet">
       <KeyboardAvoidingView
         style={[lv.root, { backgroundColor: c.cardBg }]}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
