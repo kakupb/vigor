@@ -1,6 +1,5 @@
 // app/_layout.tsx
 const DEV_BYPASS = __DEV__ && true;
-
 import { scheduleStreakAtRiskReminder } from "@/services/notificationService";
 import { scheduleWeeklyReviewNotification } from "@/services/weeklyReviewService";
 import { useAuthStore } from "@/store/authStore";
@@ -8,6 +7,8 @@ import { useCustomCategoryStore } from "@/store/customCategoryStore";
 import { useFocusStore } from "@/store/focusStore";
 import { useHabitStore } from "@/store/habitStore";
 import { useHealthMetricsStore } from "@/store/healthMetricsStore";
+import { useProjectStore } from "@/store/projectStore";
+import { useSessionNoteStore } from "@/store/sessionNoteStore";
 import { useUserStore } from "@/store/userStore";
 import { getTodayTimestamp } from "@/utils/dateUtils";
 import { getStreak } from "@/utils/getStreak";
@@ -99,6 +100,8 @@ export default function RootLayout() {
   const loadMetrics = useHealthMetricsStore((s) => s.load);
   const loadStats = useFocusStore((s) => s.loadStats);
   const loadCustomCategories = useCustomCategoryStore((s) => s.load);
+  const loadProjects = useProjectStore((s) => s.load);
+  const loadSessionNotes = useSessionNoteStore((s) => s.load);
 
   useEffect(() => {
     if (DEV_BYPASS) {
@@ -106,6 +109,8 @@ export default function RootLayout() {
       loadMetrics();
       loadStats();
       loadCustomCategories(); // ← NEU
+      loadProjects();
+      loadSessionNotes();
       return;
     }
     Promise.all([
@@ -114,6 +119,8 @@ export default function RootLayout() {
       loadMetrics(),
       loadStats(),
       loadCustomCategories(), // ← NEU
+      loadProjects(),
+      loadSessionNotes(),
     ]);
     // Weekly Review Notification einmalig planen
     const { name } = useUserStore.getState();

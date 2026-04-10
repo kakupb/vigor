@@ -1,17 +1,22 @@
 // components/focus/FocusScreen.tsx
+import {
+  CoFocusParticipantsBar,
+  InSessionNoteButton,
+} from "@/components/focus/InSessionNoteButton";
 import { usePomodoro } from "@/hooks/usePomodoro";
 import { getSlothMood } from "@/services/focusService";
+import { computeTimeRemaining, useCoFocusStore } from "@/store/coFocusStore";
 import {
   AMBIENT_SOUNDS,
   AmbientSound,
   SOUND_FILES,
   useFocusStore,
 } from "@/store/focusStore";
+import { useProjectStore } from "@/store/projectStore";
 import { SessionStatus } from "@/types/focus";
 import { PlannerEntry } from "@/types/planner";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
-import * as Crypto from "expo-crypto";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -62,11 +67,14 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
   const stats = useFocusStore((s) => s.stats);
   const setSound = useFocusStore((s) => s.setSound);
   const setPomodoroConfig = useFocusStore((s) => s.setPomodoroConfig);
+  const currentProject = useProjectStore((s) => s.currentProject);
+  const clearCurrentProject = useProjectStore((s) => s.clearCurrentProject);
 
   // ── Audio (expo-av) ────────────────────────────────────────────────────────
   const bellSoundRef = useRef<Audio.Sound | null>(null);
   const ambientSoundRef = useRef<Audio.Sound | null>(null);
-
+  const coFocusRoom = useCoFocusStore((s) => s.room);
+  const isGroupSession = !!coFocusRoom && coFocusRoom.status === "running";
   // Bell-Sound laden
   useEffect(() => {
     Audio.Sound.createAsync(require("@/assets/sounds/bell.mp3"), {
@@ -126,6 +134,29 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
     }
     updateAmbient();
   }, [soundEnabled, selectedSound, visible]);
+
+  useEffect(() => {
+    if (
+      coFocusRoom?.status === "running" &&
+      coFocusRoom.startedAt &&
+      !pomodoroState.isActive
+    ) {
+      // Server hat gestartet → lokalen Timer synchronisieren
+      const remaining = computeTimeRemaining(
+        coFocusRoom.startedAt,
+        coFocusRoom.workMinutes
+      );
+      if (remaining > 0) {
+        // Timer auf korrekten Wert setzen und starten
+        // (usePomodoro hat keine direkte "setTimeRemaining"-Methode,
+        //  daher: Session-Start-Zeit in actualStartTimeRef setzen)
+        if (!actualStartTimeRef.current) {
+          actualStartTimeRef.current = coFocusRoom.startedAt;
+        }
+        startTimer(); // start ist die lokale start()-Funktion aus usePomodoro
+      }
+    }
+  }, [coFocusRoom?.status, coFocusRoom?.startedAt]);
 
   const {
     state: pomodoroState,
@@ -358,20 +389,40 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
     const status: SessionStatus =
       completedCycles > 0 ? "complete" : "interrupted";
 
-    if (dur >= 60) {
-      addSessionRef.current({
-        id: Crypto.randomUUID(),
-        startedAt: t0,
-        endedAt: Date.now(),
-        entryId: entry?.id,
-        entryTitle: entry?.title,
-        category: entry?.category,
-        durationSeconds: dur,
-        focusSeconds,
-        status,
-        completed: status === "complete",
-        pomodoroCount: completedCycles,
-      });
+    if (dur >= 300) {
+      try {
+        const { usePlannerStore } = require("@/store/plannerStore");
+        const { addEntry } = usePlannerStore.getState();
+
+        const sessionDate = new Date(t0);
+        const dateStr = `${sessionDate.getFullYear()}-${String(
+          sessionDate.getMonth() + 1
+        ).padStart(2, "0")}-${String(sessionDate.getDate()).padStart(2, "0")}`;
+
+        const startHour = String(sessionDate.getHours()).padStart(2, "0");
+        const startMin = String(sessionDate.getMinutes()).padStart(2, "0");
+        const endDate = new Date(Date.now());
+        const endHour = String(endDate.getHours()).padStart(2, "0");
+        const endMin = String(endDate.getMinutes()).padStart(2, "0");
+
+        const durationMin = Math.round(dur / 60);
+        const title = currentProject?.title
+          ? `🎯 ${currentProject.title}`
+          : "🎯 Fokus-Session";
+
+        addEntry({
+          title,
+          date: dateStr,
+          startTime: `${startHour}:${startMin}`,
+          endTime: `${endHour}:${endMin}`,
+          durationMinute: durationMin,
+          category: entry?.category ?? "brain",
+          note: entry?.title ? `Thema: ${entry.title}` : undefined,
+          doneAt: new Date().toISOString(), // Session ist erledigt
+        });
+      } catch {
+        // best-effort — nie blockieren
+      }
     }
 
     setTimeout(() => {
@@ -403,6 +454,11 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
   useEffect(() => {
     doExitCompleteRef.current = doExitComplete;
   }, [doExitComplete]);
+
+  const clearCurrentProjectRef = useRef(clearCurrentProject);
+  useEffect(() => {
+    clearCurrentProjectRef.current = clearCurrentProject;
+  }, [clearCurrentProject]);
 
   const handleTouchStart = useCallback(() => {
     if (activeSheetRef.current !== "none") return;
@@ -513,6 +569,7 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
       >
+        <CoFocusParticipantsBar />
         <Animated.View
           style={[
             s.videoBg,
@@ -678,6 +735,10 @@ export function FocusScreen({ visible, entries, onExit }: FocusScreenProps) {
                 </Text>
               </View>
             )}
+            <InSessionNoteButton
+              isGroupSession={isGroupSession}
+              noteMode={coFocusRoom?.noteMode ?? "individual"}
+            />
             {!isExiting && (
               <View style={s.exitZone}>
                 <View style={s.progressTrack}>

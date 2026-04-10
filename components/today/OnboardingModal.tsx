@@ -1,14 +1,17 @@
 // components/today/OnboardingModal.tsx
-// Neues Onboarding — 5 Slides, sammelt Name + Ziel + Fokusziel + Uhrzeit.
-// Alles wird verarbeitet: Begrüßung, Fortschrittsbalken, Benachrichtigung.
+// Neues Onboarding — 6 Slides (war: 5).
+// NEU: Slide 4 = Habit-Template-Auswahl.
+// Ausgewählte Templates werden beim Abschluss automatisch als Habits angelegt.
 
+import { HABIT_TEMPLATES } from "@/constants/habitTemplates";
+import { useHabitStore } from "@/store/habitStore";
 import {
   FocusTime,
   UserGoal,
   UserPrefs,
   useUserStore,
 } from "@/store/userStore";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRef, useState } from "react";
 import {
@@ -19,6 +22,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -27,7 +31,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const SW = Dimensions.get("window").width;
-const TOTAL = 5;
+const TOTAL = 6; // war 5 — neuer Slide: Habit-Templates
 
 // ─── Typen ────────────────────────────────────────────────────────────────────
 type GoalOption = { id: UserGoal; label: string; sub: string; icon: string };
@@ -185,10 +189,73 @@ const sc = StyleSheet.create({
   },
 });
 
+// ─── Template-Chip ────────────────────────────────────────────────────────────
+function TemplateChip({
+  emoji,
+  label,
+  description,
+  selected,
+  onPress,
+}: {
+  emoji: string;
+  label: string;
+  description: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        Haptics.selectionAsync();
+        onPress();
+      }}
+      style={[tc.chip, selected ? tc.chipSelected : tc.chipDefault]}
+    >
+      <Text style={tc.emoji}>{emoji}</Text>
+      <View style={tc.textWrap}>
+        <Text style={[tc.label, selected && tc.labelSelected]}>{label}</Text>
+        <Text style={tc.sub}>{description}</Text>
+      </View>
+      <View style={[tc.check, selected && tc.checkSelected]}>
+        {selected && <Ionicons name="checkmark" size={13} color="#fff" />}
+      </View>
+    </Pressable>
+  );
+}
+
+const tc = StyleSheet.create({
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  chipDefault: { borderColor: "#e2e8f0", backgroundColor: "#fff" },
+  chipSelected: { borderColor: "#3b8995", backgroundColor: "#f0fbfc" },
+  emoji: { fontSize: 22, width: 32, textAlign: "center" },
+  textWrap: { flex: 1 },
+  label: { fontSize: 14, fontWeight: "600", color: "#0f172a" },
+  labelSelected: { color: "#0f172a" },
+  sub: { fontSize: 12, color: "#94a3b8", marginTop: 1 },
+  check: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkSelected: { backgroundColor: "#3b8995", borderColor: "#3b8995" },
+});
+
 // ─── Haupt-Modal ──────────────────────────────────────────────────────────────
 export function OnboardingModal({ visible }: { visible: boolean }) {
   const insets = useSafeAreaInsets();
   const completeOnboarding = useUserStore((s) => s.completeOnboarding);
+  const addHabit = useHabitStore((s) => s.addHabit);
   const [dismissed, setDismissed] = useState(false);
 
   // State
@@ -197,6 +264,10 @@ export function OnboardingModal({ visible }: { visible: boolean }) {
   const [goal, setGoal] = useState<UserGoal>("study");
   const [minutes, setMinutes] = useState(60);
   const [focusTime, setFocusTime] = useState<FocusTime>("afternoon");
+  const [selectedTemplates, setSelectedTemplates] = useState<string[]>([
+    "tpl_lernen",
+    "tpl_sport",
+  ]); // 2 vorausgewählt — sofortiger Wert ohne Aufwand
 
   const translateX = useRef(new Animated.Value(0)).current;
   const isLast = index === TOTAL - 1;
@@ -215,6 +286,12 @@ export function OnboardingModal({ visible }: { visible: boolean }) {
     Haptics.selectionAsync();
   }
 
+  function toggleTemplate(id: string) {
+    setSelectedTemplates((prev) =>
+      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]
+    );
+  }
+
   function handleNext() {
     if (isLast) {
       const prefs: UserPrefs = {
@@ -222,6 +299,23 @@ export function OnboardingModal({ visible }: { visible: boolean }) {
         dailyFocusMinutes: minutes,
         preferredTime: focusTime,
       };
+
+      // ── Ausgewählte Habit-Templates anlegen ──────────────────────────
+      const templatesToCreate = HABIT_TEMPLATES.filter((t) =>
+        selectedTemplates.includes(t.id)
+      );
+      templatesToCreate.forEach((t) => {
+        addHabit(
+          t.title,
+          t.kind,
+          t.category,
+          t.unit,
+          t.dailyTarget,
+          t.schedule,
+          undefined
+        );
+      });
+
       setDismissed(true);
       completeOnboarding(name.trim() || "Fokusmensch", prefs);
     } else {
@@ -229,265 +323,257 @@ export function OnboardingModal({ visible }: { visible: boolean }) {
     }
   }
 
-  const canNext = index === 0 ? true : true; // alle Slides haben Defaults
-
   // Zusammenfassung für letzten Slide
-  const goalLabel = GOAL_OPTIONS.find((g) => g.id === goal)?.label ?? "";
-  const minLabel = MIN_OPTIONS.find((m) => m.minutes === minutes)?.label ?? "";
-  const timeLabel = TIME_OPTIONS.find((t) => t.id === focusTime)?.label ?? "";
-  const timeHour = TIME_OPTIONS.find((t) => t.id === focusTime)?.hour ?? 14;
-  const displayName = name.trim() || "Fokusmensch";
+  const goalLabel = GOAL_OPTIONS.find((g) => g.id === goal)?.label ?? goal;
+  const timeLabel =
+    TIME_OPTIONS.find((t) => t.id === focusTime)?.label ?? focusTime;
+
+  if (!visible || dismissed) return null;
 
   return (
-    <Modal
-      visible={visible && !dismissed}
-      animationType="fade"
-      statusBarTranslucent
-    >
+    <Modal visible animationType="fade" presentationStyle="fullScreen">
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={[
+          ob.root,
+          { paddingTop: insets.top, paddingBottom: insets.bottom },
+        ]}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <View
-          style={[
-            s.root,
-            { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 },
-          ]}
-        >
-          {/* Progress Dots */}
-          <View style={s.dotsRow}>
-            {Array.from({ length: TOTAL }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  s.dot,
-                  i === index ? s.dotActive : i < index ? s.dotDone : s.dotIdle,
-                ]}
-              />
-            ))}
-          </View>
+        {/* ── Fortschrittsbalken ── */}
+        <View style={ob.progressTrack}>
+          <View
+            style={[
+              ob.progressFill,
+              { width: `${((index + 1) / TOTAL) * 100}%` as any },
+            ]}
+          />
+        </View>
 
-          {/* Slides */}
-          <View style={s.viewport}>
-            <Animated.View
-              style={[
-                s.track,
-                { width: SW * TOTAL, transform: [{ translateX }] },
-              ]}
-            >
-              {/* ── Slide 0: Willkommen + Name ── */}
-              <View style={[s.slide, { width: SW }]}>
-                <View style={[s.iconWrap, { backgroundColor: "#f0fbfc" }]}>
-                  <MaterialCommunityIcons
-                    name="lightning-bolt"
-                    size={48}
-                    color="#3b8995"
-                  />
-                </View>
-                <Text style={s.title}>Willkommen bei Vigor</Text>
-                <Text style={s.desc}>
-                  Dein Study Companion. Kein YouTube-Rabbit-Hole mehr — nur du
-                  und dein Fokus.
-                </Text>
-                <View style={s.inputWrap}>
-                  <Text style={s.inputLabel}>Wie heißt du?</Text>
-                  <TextInput
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="Dein Name"
-                    placeholderTextColor="#cbd5e1"
-                    style={s.input}
-                    returnKeyType="next"
-                    onSubmitEditing={handleNext}
-                    autoFocus={index === 0}
-                    maxLength={30}
-                  />
-                </View>
-              </View>
-
-              {/* ── Slide 1: Hauptziel ── */}
-              <View
-                style={[
-                  s.slide,
-                  { width: SW, justifyContent: "flex-start", paddingTop: 8 },
-                ]}
+        {/* ── Slides ── */}
+        <View style={ob.slideContainer}>
+          <Animated.View
+            style={[ob.slidesRow, { transform: [{ translateX }] }]}
+          >
+            {/* ── Slide 0: Name ── */}
+            <View style={[ob.slide, { width: SW }]}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={ob.slideContent}
+                keyboardShouldPersistTaps="handled"
               >
-                <Text style={s.title}>Was ist dein Ziel?</Text>
-                <Text style={s.descSm}>
-                  Vigor passt sich an deine Bedürfnisse an.
+                <Text style={ob.headline}>Wie heißt du?</Text>
+                <Text style={ob.sub}>
+                  Damit Vigor dich persönlich begrüßen kann.
                 </Text>
-                <View style={s.optionList}>
-                  {GOAL_OPTIONS.map((opt) => (
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Dein Name"
+                  placeholderTextColor="#94a3b8"
+                  style={ob.nameInput}
+                  returnKeyType="next"
+                  onSubmitEditing={() => goTo(1)}
+                  autoFocus
+                  maxLength={30}
+                />
+              </ScrollView>
+            </View>
+
+            {/* ── Slide 1: Ziel ── */}
+            <View style={[ob.slide, { width: SW }]}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={ob.slideContent}
+              >
+                <Text style={ob.headline}>Was ist dein Ziel?</Text>
+                <Text style={ob.sub}>Vigor passt sich deinem Fokus an.</Text>
+                <View style={ob.cardList}>
+                  {GOAL_OPTIONS.map((g) => (
                     <SelectCard
-                      key={opt.id}
-                      icon={opt.icon}
-                      label={opt.label}
-                      sub={opt.sub}
-                      selected={goal === opt.id}
-                      onPress={() => setGoal(opt.id)}
+                      key={g.id}
+                      icon={g.icon}
+                      label={g.label}
+                      sub={g.sub}
+                      selected={goal === g.id}
+                      onPress={() => setGoal(g.id)}
                     />
                   ))}
                 </View>
-              </View>
+              </ScrollView>
+            </View>
 
-              {/* ── Slide 2: Tägliches Fokusziel ── */}
-              <View
-                style={[
-                  s.slide,
-                  { width: SW, justifyContent: "flex-start", paddingTop: 8 },
-                ]}
+            {/* ── Slide 2: Fokuszeit ── */}
+            <View style={[ob.slide, { width: SW }]}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={ob.slideContent}
               >
-                <Text style={s.title}>Dein tägliches Ziel</Text>
-                <Text style={s.descSm}>
-                  Wie lange willst du täglich fokussieren?
-                </Text>
-                <View style={s.optionList}>
-                  {MIN_OPTIONS.map((opt) => (
+                <Text style={ob.headline}>Wie lange täglich?</Text>
+                <Text style={ob.sub}>Dein tägliches Fokus-Ziel.</Text>
+                <View style={ob.cardList}>
+                  {MIN_OPTIONS.map((m) => (
                     <SelectCard
-                      key={opt.minutes}
-                      icon={
-                        opt.minutes <= 30
-                          ? "timer-outline"
-                          : opt.minutes <= 60
-                          ? "time-outline"
-                          : opt.minutes <= 120
-                          ? "flame-outline"
-                          : "trophy-outline"
-                      }
-                      label={opt.label}
-                      sub={opt.sub}
-                      selected={minutes === opt.minutes}
-                      onPress={() => setMinutes(opt.minutes)}
+                      key={m.minutes}
+                      icon="timer-outline"
+                      label={m.label}
+                      sub={m.sub}
+                      selected={minutes === m.minutes}
+                      onPress={() => setMinutes(m.minutes)}
                     />
                   ))}
                 </View>
-              </View>
+              </ScrollView>
+            </View>
 
-              {/* ── Slide 3: Tageszeit ── */}
-              <View
-                style={[
-                  s.slide,
-                  { width: SW, justifyContent: "flex-start", paddingTop: 8 },
-                ]}
+            {/* ── Slide 3: Uhrzeit ── */}
+            <View style={[ob.slide, { width: SW }]}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={ob.slideContent}
               >
-                <Text style={s.title}>Wann fokussierst du?</Text>
-                <Text style={s.descSm}>
-                  Vigor erinnert dich täglich zur richtigen Zeit.
+                <Text style={ob.headline}>Wann fokussierst du?</Text>
+                <Text style={ob.sub}>
+                  Für kluge Erinnerungen zur richtigen Zeit.
                 </Text>
-                <View style={s.optionList}>
-                  {TIME_OPTIONS.map((opt) => (
+                <View style={ob.cardList}>
+                  {TIME_OPTIONS.map((t) => (
                     <SelectCard
-                      key={opt.id}
-                      icon={opt.icon}
-                      label={opt.label}
-                      sub={opt.sub}
-                      selected={focusTime === opt.id}
-                      onPress={() => setFocusTime(opt.id)}
+                      key={t.id}
+                      icon={t.icon}
+                      label={t.label}
+                      sub={t.sub}
+                      selected={focusTime === t.id}
+                      onPress={() => setFocusTime(t.id)}
                     />
                   ))}
                 </View>
-                <View style={s.notifHint}>
-                  <Ionicons
-                    name="notifications-outline"
-                    size={14}
-                    color="#3b8995"
-                  />
-                  <Text style={s.notifHintText}>
-                    Wir senden dir täglich um {timeHour}:00 Uhr eine Erinnerung.
+              </ScrollView>
+            </View>
+
+            {/* ── Slide 4: Habit-Templates (NEU) ── */}
+            <View style={[ob.slide, { width: SW }]}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={ob.slideContent}
+              >
+                <Text style={ob.headline}>Welche Habits?</Text>
+                <Text style={ob.sub}>
+                  Wähle aus — sie werden direkt angelegt.{"\n"}
+                  Du kannst jederzeit mehr hinzufügen.
+                </Text>
+                <View style={ob.cardList}>
+                  {HABIT_TEMPLATES.map((t) => (
+                    <TemplateChip
+                      key={t.id}
+                      emoji={t.emoji}
+                      label={t.title}
+                      description={t.description}
+                      selected={selectedTemplates.includes(t.id)}
+                      onPress={() => toggleTemplate(t.id)}
+                    />
+                  ))}
+                </View>
+                {selectedTemplates.length === 0 && (
+                  <Text style={ob.skipHint}>
+                    Kein Problem — du kannst Habits später manuell erstellen.
                   </Text>
-                </View>
-              </View>
+                )}
+              </ScrollView>
+            </View>
 
-              {/* ── Slide 4: Bereit ── */}
-              <View style={[s.slide, { width: SW }]}>
-                <View style={[s.iconWrap, { backgroundColor: "#fffbeb" }]}>
-                  <MaterialCommunityIcons
-                    name="fire"
-                    size={48}
-                    color="#f59e0b"
-                  />
-                </View>
-                <Text style={s.title}>
-                  Alles bereit{name.trim() ? `, ${name.trim()}` : ""}!
+            {/* ── Slide 5: Zusammenfassung ── */}
+            <View style={[ob.slide, { width: SW }]}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={ob.slideContent}
+              >
+                <Text style={ob.headline}>
+                  {name.trim() ? `Bereit, ${name.trim()}!` : "Alles bereit!"}
                 </Text>
-                <Text style={s.desc}>
-                  Dein persönlicher Fokus-Plan ist gesetzt.
+                <Text style={ob.sub}>
+                  Deine Vigor-Einrichtung auf einen Blick.
                 </Text>
-                <View style={s.summaryCard}>
+
+                <View style={ob.summaryCard}>
                   <SummaryRow
-                    icon="flag-outline"
+                    icon="trophy-outline"
                     label="Ziel"
                     value={goalLabel}
                   />
                   <SummaryRow
                     icon="timer-outline"
                     label="Täglich"
-                    value={minLabel}
+                    value={`${minutes} Min Fokus`}
                   />
                   <SummaryRow
-                    icon="alarm-outline"
-                    label="Erinnerung"
-                    value={`${timeLabel}, ${timeHour}:00 Uhr`}
+                    icon="time-outline"
+                    label="Uhrzeit"
+                    value={timeLabel}
+                  />
+                  <SummaryRow
+                    icon="flame-outline"
+                    label="Habits"
+                    value={
+                      selectedTemplates.length === 0
+                        ? "Noch keine — später hinzufügen"
+                        : `${selectedTemplates.length} Template${
+                            selectedTemplates.length > 1 ? "s" : ""
+                          } ausgewählt`
+                    }
                   />
                 </View>
-                <Text style={s.readyHint}>
-                  Du kannst alles später in den Einstellungen ändern.
-                </Text>
-              </View>
-            </Animated.View>
+
+                <View style={ob.ctaBox}>
+                  <Text style={ob.ctaTitle}>🎯 Los geht's</Text>
+                  <Text style={ob.ctaSub}>
+                    Starte deine erste Session.{"\n"}
+                    Jeder Tag Fokus baut deinen Streak auf.
+                  </Text>
+                </View>
+              </ScrollView>
+            </View>
+          </Animated.View>
+        </View>
+
+        {/* ── Navigation ── */}
+        <View style={[ob.nav, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <Pressable
+            onPress={() => goTo(index - 1)}
+            style={[ob.backBtn, index === 0 && { opacity: 0 }]}
+            disabled={index === 0}
+          >
+            <Ionicons name="chevron-back" size={20} color="#64748b" />
+          </Pressable>
+
+          {/* Punkte */}
+          <View style={ob.dots}>
+            {Array.from({ length: TOTAL }).map((_, i) => (
+              <View
+                key={i}
+                style={[
+                  ob.dot,
+                  i === index && ob.dotActive,
+                  i < index && ob.dotDone,
+                ]}
+              />
+            ))}
           </View>
 
-          {/* Footer */}
-          <View style={s.footer}>
-            <View style={s.footerRow}>
-              {index > 0 && (
-                <Pressable
-                  onPress={() => goTo(index - 1)}
-                  style={s.backBtn}
-                  hitSlop={10}
-                >
-                  <Ionicons name="arrow-back" size={18} color="#94a3b8" />
-                </Pressable>
-              )}
-              <Pressable
-                onPress={handleNext}
-                style={({ pressed }) => [
-                  s.nextBtn,
-                  pressed && { opacity: 0.88 },
-                ]}
-              >
-                <Text style={s.nextBtnText}>
-                  {isLast ? "Los geht's!" : "Weiter"}
-                </Text>
-                <Ionicons
-                  name={isLast ? "checkmark" : "arrow-forward"}
-                  size={18}
-                  color="#fff"
-                />
-              </Pressable>
-            </View>
-            {index === 0 && (
-              <Pressable
-                onPress={() => {
-                  setDismissed(true);
-                  completeOnboarding("_onboarded", {
-                    goal: "study",
-                    dailyFocusMinutes: 60,
-                    preferredTime: "afternoon",
-                  });
-                }}
-                style={s.skipBtn}
-              >
-                <Text style={s.skipTx}>Überspringen</Text>
-              </Pressable>
-            )}
-          </View>
+          <Pressable onPress={handleNext} style={ob.nextBtn}>
+            <Text style={ob.nextTx}>{isLast ? "Starten" : "Weiter"}</Text>
+            <Ionicons
+              name={isLast ? "checkmark" : "arrow-forward"}
+              size={18}
+              color="#fff"
+            />
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
 
+// ─── Zusammenfassungs-Zeile ───────────────────────────────────────────────────
 function SummaryRow({
   icon,
   label,
@@ -499,113 +585,140 @@ function SummaryRow({
 }) {
   return (
     <View style={sr.row}>
-      <Ionicons name={icon as any} size={15} color="#3b8995" />
+      <Ionicons name={icon as any} size={16} color="#3b8995" />
       <Text style={sr.label}>{label}</Text>
-      <Text style={sr.value}>{value}</Text>
+      <Text style={sr.value} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }
 
 const sr = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  label: { fontSize: 13, color: "#94a3b8", flex: 1 },
-  value: { fontSize: 13, fontWeight: "600", color: "#0f172a" },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+  },
+  label: { fontSize: 14, color: "#64748b", fontWeight: "500", width: 70 },
+  value: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0f172a",
+    textAlign: "right",
+  },
 });
 
-const s = StyleSheet.create({
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const ob = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#fff" },
-  dotsRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
+
+  progressTrack: {
+    height: 3,
+    backgroundColor: "#f1f5f9",
+    marginHorizontal: 24,
+    borderRadius: 2,
   },
-  dot: { height: 4, borderRadius: 2 },
-  dotActive: { width: 24, backgroundColor: "#3b8995" },
-  dotDone: { width: 8, backgroundColor: "#a5e8ef" },
-  dotIdle: { width: 8, backgroundColor: "#e2e8f0" },
-  viewport: { flex: 1, overflow: "hidden" },
-  track: { flexDirection: "row", flex: 1 },
-  slide: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
+  progressFill: { height: 3, backgroundColor: "#3b8995", borderRadius: 2 },
+
+  slideContainer: { flex: 1, overflow: "hidden" },
+  slidesRow: { flexDirection: "row", flex: 1 },
+  slide: { flex: 1 },
+  slideContent: {
     paddingHorizontal: 28,
+    paddingTop: 32,
+    paddingBottom: 24,
     gap: 16,
   },
-  iconWrap: {
-    width: 100,
-    height: 100,
-    borderRadius: 30,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 26,
+
+  headline: {
+    fontSize: 28,
     fontWeight: "800",
     color: "#0f172a",
-    textAlign: "center",
     letterSpacing: -0.5,
   },
-  desc: { fontSize: 15, color: "#64748b", textAlign: "center", lineHeight: 22 },
-  descSm: {
-    fontSize: 14,
-    color: "#94a3b8",
-    textAlign: "center",
-    marginBottom: 4,
-  },
-  inputWrap: { width: "100%", gap: 8 },
-  inputLabel: { fontSize: 13, fontWeight: "600", color: "#64748b" },
-  input: {
-    width: "100%",
+  sub: { fontSize: 15, color: "#64748b", lineHeight: 22 },
+
+  cardList: { gap: 10 },
+
+  nameInput: {
     borderWidth: 1.5,
-    borderColor: "#3b8995",
+    borderColor: "#e2e8f0",
     borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 17,
+    padding: 16,
+    fontSize: 18,
     fontWeight: "600",
     color: "#0f172a",
     backgroundColor: "#f8f9fb",
-    textAlign: "center",
   },
-  optionList: { width: "100%", gap: 8 },
-  notifHint: {
+
+  skipHint: {
+    fontSize: 13,
+    color: "#94a3b8",
+    textAlign: "center",
+    fontStyle: "italic",
+    marginTop: 4,
+  },
+
+  summaryCard: {
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    backgroundColor: "#f8f9fb",
+    gap: 0,
+  },
+
+  ctaBox: {
+    backgroundColor: "#f0fbfc",
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#a5e8ef",
+    alignItems: "center",
+    gap: 6,
+  },
+  ctaTitle: { fontSize: 18, fontWeight: "800", color: "#0f172a" },
+  ctaSub: {
+    fontSize: 14,
+    color: "#475569",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+
+  // Navigation
+  nav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dots: { flexDirection: "row", gap: 6 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#e2e8f0" },
+  dotActive: { width: 20, backgroundColor: "#3b8995", borderRadius: 3 },
+  dotDone: { backgroundColor: "#a5e8ef" },
+  nextBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 4,
-  },
-  notifHintText: { fontSize: 12, color: "#3b8995", flex: 1, lineHeight: 17 },
-  summaryCard: {
-    width: "100%",
-    backgroundColor: "#f8f9fb",
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  readyHint: { fontSize: 12, color: "#cbd5e1", textAlign: "center" },
-  footer: { paddingHorizontal: 24, paddingTop: 12, gap: 10 },
-  footerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  backBtn: {
-    width: 48,
-    height: 52,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  nextBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
     backgroundColor: "#3b8995",
-    borderRadius: 16,
-    paddingVertical: 15,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 22,
   },
-  nextBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  skipBtn: { alignItems: "center", paddingVertical: 4 },
-  skipTx: { fontSize: 13, color: "#cbd5e1" },
+  nextTx: { fontSize: 15, fontWeight: "700", color: "#fff" },
 });

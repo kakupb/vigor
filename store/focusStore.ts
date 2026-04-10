@@ -52,7 +52,21 @@ const defaultStats: FocusStats = {
   bestStreak: 0,
   lastFocusDate: "",
   pomodorosCompleted: 0,
+  streakFreezeAvailable: false,
+  lastFreezeWeek: "",
 };
+
+function getISOWeekString(date: Date): string {
+  const d = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+  );
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(
+    ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+  );
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
 
 // ─── Widget-Sync: lazy, kein Circular Import ──────────────────────────────────
 // Greift zur Laufzeit auf beide Stores zu — kein Top-Level-Import nötig
@@ -203,17 +217,61 @@ export const useFocusStore = create<FocusState>((set, get) => ({
     const lastFocus = get().stats.lastFocusDate;
     if (lastFocus === today) return;
 
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = dateToLocalString(yesterday);
-    const newStreak =
-      lastFocus === yesterdayStr ? get().stats.currentStreak + 1 : 1;
+    const yesterday = dateToLocalString(new Date(Date.now() - 86_400_000));
+    const dayBeforeYesterday = dateToLocalString(
+      new Date(Date.now() - 172_800_000)
+    );
+    const thisWeek = getISOWeekString(new Date());
+
+    const { currentStreak, streakFreezeAvailable, lastFreezeWeek } =
+      get().stats;
+
+    // ── Streak berechnen ────────────────────────────────────────────────
+    let newStreak: number;
+    let freezeConsumed = false;
+
+    if (lastFocus === yesterday) {
+      // Normaler Folgetag
+      newStreak = currentStreak + 1;
+    } else if (
+      lastFocus === dayBeforeYesterday &&
+      streakFreezeAvailable &&
+      currentStreak >= 5
+    ) {
+      // Genau 1 Aussetzer + Freeze verfügbar → Streak retten
+      newStreak = currentStreak + 1;
+      freezeConsumed = true;
+    } else {
+      // Zu lange Pause → Reset
+      newStreak = 1;
+    }
+
+    // ── Freeze-Status aktualisieren ─────────────────────────────────────
+    // Freeze wird wöchentlich regeneriert wenn:
+    // — neuer Streak ≥ 5
+    // — diese Woche noch nicht regeneriert
+    // — nicht gerade verbraucht
+    let newFreezeAvailable: boolean;
+    let newLastFreezeWeek: string;
+
+    if (freezeConsumed) {
+      newFreezeAvailable = false;
+      newLastFreezeWeek = thisWeek;
+    } else if (newStreak >= 5 && lastFreezeWeek !== thisWeek) {
+      newFreezeAvailable = true;
+      newLastFreezeWeek = thisWeek;
+    } else {
+      newFreezeAvailable = streakFreezeAvailable ?? false;
+      newLastFreezeWeek = lastFreezeWeek ?? "";
+    }
 
     const updatedStats: FocusStats = {
       ...get().stats,
       currentStreak: newStreak,
       bestStreak: Math.max(get().stats.bestStreak, newStreak),
       lastFocusDate: today,
+      streakFreezeAvailable: newFreezeAvailable,
+      lastFreezeWeek: newLastFreezeWeek,
     };
     set({ stats: updatedStats });
     storage.save("focus_stats", updatedStats);

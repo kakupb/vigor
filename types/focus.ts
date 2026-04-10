@@ -1,4 +1,5 @@
 // types/focus.ts
+// Ergänzt: projectId + projectTitle für Projekt-Tracking
 
 import { PlannerCategory } from "./planner";
 
@@ -11,9 +12,13 @@ export type FocusSession = {
   entryId?: string;
   entryTitle?: string;
   category?: PlannerCategory;
+  // ── Projekt-Tracking (NEU) ────────────────────────────────────────────────
+  projectId?: string; // Referenz auf Project.id
+  projectTitle?: string; // Snapshot des Titels (bleibt erhalten wenn Projekt umbenannt wird)
+  // ─────────────────────────────────────────────────────────────────────────
   durationSeconds: number;
-  focusSeconds?: number; // ← NEU, optional für Rückwärtskompatibilität
-  status?: SessionStatus; // ← NEU, optional
+  focusSeconds?: number;
+  status?: SessionStatus;
   completed: boolean;
   pomodoroCount?: number;
 };
@@ -22,10 +27,12 @@ export type FocusStats = {
   totalSessions: number;
   totalMinutes: number;
   longestSessionMinutes: number;
-  currentStreak: number; // Tage in Folge
+  currentStreak: number;
   bestStreak: number;
   lastFocusDate: string; // YYYY-MM-DD
   pomodorosCompleted: number;
+  streakFreezeAvailable?: boolean;
+  lastFreezeWeek?: string;
 };
 
 export type SlothMood = {
@@ -36,7 +43,7 @@ export type SlothMood = {
 
 export type PomodoroState = {
   isActive: boolean;
-  timeRemaining: number; // Sekunden
+  timeRemaining: number;
   isBreak: boolean;
   completedPomodoros: number;
 };

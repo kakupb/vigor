@@ -1,24 +1,22 @@
 // app/(tabs)/fokus.tsx
-// Der Hauptscreen von Vigor.
-// Einstieg: Streak sehen → Sound wählen → Session starten.
-// Kontext: Heutige Planner-Einträge + Habit-Schnellcheck darunter.
-
+// FIXES:
+// 1. Sound-Button: keine inline SoundPills mehr — nur Icon + Label + Chevron
+// 2. Streak-Anzeige: effectiveStreak — zeigt 0 wenn lastFocusDate älter als gestern
 import { FocusScreen } from "@/components/focus/FocusScreen";
 import { PomodoroSettingsSheet } from "@/components/focus/PomodoroSettingsSheet";
+import { ProjectPickerSheet } from "@/components/focus/ProjectPickerSheet";
 import { SessionRecapSheet } from "@/components/focus/SessionRecapSheet";
 import { SoundPickerSheet } from "@/components/focus/SoundPickerSheet";
+import { DailyBriefing } from "@/components/today/DailyBriefing";
 import { MenuSheet } from "@/components/today/MenuSheet";
 import { OnboardingModal } from "@/components/today/OnboardingModal";
-import { QuoteOfTheDay } from "@/components/today/QuoteOfTheDay";
+import { WorkoutSyncBanner } from "@/components/today/WorkoutSyncBanner";
 import { usePlannerDay } from "@/hooks/planner/usePlanner";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useCategoryConfig } from "@/hooks/useCategoryConfig";
 import { useHabits } from "@/hooks/useHabits";
-import {
-  AMBIENT_SOUNDS,
-  AmbientSound,
-  useFocusStore,
-} from "@/store/focusStore";
+import { AMBIENT_SOUNDS, useFocusStore } from "@/store/focusStore";
+import { useProjectStore } from "@/store/projectStore";
 import { useUserStore } from "@/store/userStore";
 import { dateToLocalString } from "@/utils/dateUtils";
 import { isScheduledForToday } from "@/utils/scheduleUtils";
@@ -29,179 +27,34 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// ─── Sound-Pill ───────────────────────────────────────────────────────────────
-function SoundPill({
-  id,
-  label,
-  icon,
-  selected,
-  onPress,
-  dark,
-}: {
-  id: AmbientSound;
-  label: string;
-  icon: string;
-  selected: boolean;
-  onPress: () => void;
-  dark: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        sp.pill,
-        selected
-          ? sp.pillActive
-          : {
-              backgroundColor: dark ? "#1e293b" : "#f1f5f9",
-              borderColor: dark ? "#334155" : "#e2e8f0",
-            },
-      ]}
-    >
-      <Ionicons
-        name={icon as any}
-        size={13}
-        color={selected ? "#fff" : dark ? "#94a3b8" : "#64748b"}
-      />
-      <Text
-        style={[
-          sp.label,
-          selected ? sp.labelActive : { color: dark ? "#94a3b8" : "#64748b" },
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-const sp = StyleSheet.create({
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  pillActive: {
-    backgroundColor: "#3b8995",
-    borderColor: "#3b8995",
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  labelActive: {
-    color: "#fff",
-  },
-});
-
-// ─── Habit-Chip (schneller Check) ─────────────────────────────────────────────
-function HabitChip({
-  title,
-  completed,
-  category,
-  customCategoryId, // ← NEU
-  onToggle,
-  dark,
-}: {
-  title: string;
-  completed: boolean;
-  category?: string;
-  customCategoryId?: string; // ← NEU
-  onToggle: () => void;
-  dark: boolean;
-}) {
-  const cfg = useCategoryConfig(category as any, customCategoryId);
-  return (
-    <Pressable
-      onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        onToggle();
-      }}
-      style={[
-        hc.chip,
-        completed
-          ? {
-              backgroundColor: dark ? "#0d2e1e" : "#f0fdf4",
-              borderColor: dark ? "#166534" : "#86efac",
-            }
-          : {
-              backgroundColor: dark ? "#1e293b" : "#f8f9fb",
-              borderColor: dark ? "#334155" : "#e2e8f0",
-            },
-      ]}
-    >
-      <View
-        style={[hc.dot, { backgroundColor: completed ? "#10b981" : cfg.color }]}
-      />
-      <Text
-        style={[
-          hc.title,
-          { color: completed ? "#10b981" : dark ? "#e2e8f0" : "#0f172a" },
-          completed && hc.titleDone,
-        ]}
-        numberOfLines={1}
-      >
-        {title}
-      </Text>
-      {completed && (
-        <Ionicons name="checkmark-circle" size={14} color="#10b981" />
-      )}
-    </Pressable>
-  );
-}
-
-const hc = StyleSheet.create({
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  dot: { width: 7, height: 7, borderRadius: 3.5, flexShrink: 0 },
-  title: { flex: 1, fontSize: 13, fontWeight: "500" },
-  titleDone: { textDecorationLine: "line-through" },
-});
-
-// ─── Planner-Eintrag kompakt ──────────────────────────────────────────────────
+// ─── Planner-Chip ─────────────────────────────────────────────────────────────
 function PlannerChip({
   title,
   startTime,
-  category,
-  customCategoryId, // ← NEU
   done,
   onPress,
   dark,
+  category,
+  customCategoryId,
 }: {
   title: string;
   startTime?: string;
-  category?: string;
-  customCategoryId?: string; // ← NEU
   done: boolean;
   onPress: () => void;
   dark: boolean;
+  category?: any;
+  customCategoryId?: string;
 }) {
-  const cfg = useCategoryConfig(category as any, customCategoryId);
+  const cfg = useCategoryConfig(category, customCategoryId);
   return (
     <Pressable
       onPress={onPress}
       style={[
         pc.row,
-        done
-          ? {
-              backgroundColor: dark ? "#0d2e1e" : "#f0fdf4",
-              borderColor: dark ? "#166534" : "#bbf7d0",
-            }
-          : {
-              backgroundColor: dark ? "#1e293b" : "#ffffff",
-              borderColor: dark ? "#334155" : "#eef0f4",
-            },
+        {
+          backgroundColor: dark ? "#1e293b" : "#ffffff",
+          borderColor: dark ? "#334155" : "#eef0f4",
+        },
       ]}
     >
       <View
@@ -244,7 +97,6 @@ const pc = StyleSheet.create({
   time: { fontSize: 11, marginTop: 1 },
 });
 
-// Statische Styles die keine Theme-Farben brauchen
 const soundBtn = StyleSheet.create({
   row: {
     flexDirection: "row",
@@ -290,62 +142,104 @@ export default function FokusScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [lastSessionSeconds, setLastSessionSeconds] = useState(0);
   const [lastSessionPomodoros, setLastSessionPomodoros] = useState(0);
+  const [projectPickerVisible, setProjectPickerVisible] = useState(false);
+  const setCurrentProject = useProjectStore((s) => s.setCurrentProject);
 
   const { name, hasOnboarded } = useUserStore();
-  const { habits, actions: habitActions } = useHabits();
+  const { habits } = useHabits();
   const today = dateToLocalString(new Date());
   const { entries, actions: plannerActions } = usePlannerDay(today);
 
+  //FOKUS
   const focusStats = useFocusStore((s) => s.stats);
   const loadStats = useFocusStore((s) => s.loadStats);
   const selectedSound = useFocusStore((s) => s.selectedSound);
   const setSound = useFocusStore((s) => s.setSound);
+  const sessions = useFocusStore((s) => s.sessions);
+  const [coFocusVisible, setCoFocusVisible] = useState(false);
 
   useEffect(() => {
     loadStats();
   }, []);
 
-  // Heutiger Kontext
+  // ── Heutiger Kontext ──────────────────────────────────────────────────────
   const todayHabits = useMemo(
     () => habits.filter(({ habit }) => isScheduledForToday(habit.schedule)),
     [habits]
   );
   const habitsCompleted = todayHabits.filter((h) => h.completed).length;
 
-  // Planner: max 3 Einträge, sortiert nach Zeit
+  const todayMinutes = useMemo(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return sessions
+      .filter((s) => s.startedAt >= todayStart.getTime())
+      .reduce(
+        (sum, s) =>
+          sum + Math.floor((s.focusSeconds ?? s.durationSeconds) / 60),
+        0
+      );
+  }, [sessions]);
+
+  // Planner: max 3 für Anzeige, voll für DailyBriefing
   const plannerToday = useMemo(() => {
-    const all = [...entries.timed, ...entries.anytime];
-    return all.slice(0, 3);
+    return [...entries.timed, ...entries.anytime].slice(0, 3);
   }, [entries]);
 
-  // Greeting
+  const plannerTotalCount = useMemo(
+    () => entries.timed.length + entries.anytime.length,
+    [entries]
+  );
+
+  // ── Streak — FIX: effectiveStreak ────────────────────────────────────────
+  // currentStreak im Store wird nur beim Starten einer Session zurückgesetzt.
+  // Wurde länger als gestern nicht fokussiert, ist der Streak faktisch 0.
+  const streak = focusStats.currentStreak;
+  const lastFocusDate = focusStats.lastFocusDate;
+  const todayStr = dateToLocalString(new Date());
+  const yesterdayStr = dateToLocalString(new Date(Date.now() - 86_400_000));
+
+  const hasEverFocused = lastFocusDate !== "";
+  const isStreakActive =
+    lastFocusDate === todayStr || lastFocusDate === yesterdayStr;
+
+  // Was der Nutzer wirklich sieht — 0 wenn Streak veraltet
+  const effectiveStreak = isStreakActive ? streak : 0;
+
+  const streakLabel =
+    effectiveStreak === 0
+      ? hasEverFocused && !isStreakActive
+        ? "Streak unterbrochen — fang neu an"
+        : "Starte deinen ersten Streak"
+      : effectiveStreak === 1 && lastFocusDate === todayStr
+      ? "Gut gemacht! Komm morgen wieder."
+      : effectiveStreak === 1
+      ? "Gestern angefangen — mach heute weiter!"
+      : `${effectiveStreak} Tage in Folge`;
+
+  // Streak-at-Risk: aktiver Streak, heute noch keine Session, nach 18 Uhr
+  const streakAtRisk = useMemo(() => {
+    return (
+      effectiveStreak > 0 &&
+      lastFocusDate !== todayStr &&
+      new Date().getHours() >= 18
+    );
+  }, [effectiveStreak, lastFocusDate, todayStr]);
+
+  // ── Greeting ─────────────────────────────────────────────────────────────
   const hour = new Date().getHours();
   const greetingWord = hour < 12 ? "Morgen" : hour < 18 ? "Tag" : "Abend";
   const displayName = name && name !== "_onboarded" ? name : null;
 
-  // Streak-Text
-  const streak = focusStats.currentStreak;
-  const lastFocusDate = focusStats.lastFocusDate; // YYYY-MM-DD
+  // ── Sound ────────────────────────────────────────────────────────────────
+  const currentSoundConfig = AMBIENT_SOUNDS.find((s) => s.id === selectedSound);
+  const soundActive = selectedSound !== "none";
 
-  const todayStr = dateToLocalString(new Date());
-  const yesterdayStr = dateToLocalString(new Date(Date.now() - 86_400_000));
-  const streakLabel =
-    streak === 0
-      ? "Starte deinen ersten Streak"
-      : streak === 1 && lastFocusDate === todayStr
-      ? "Gut gemacht! Komm morgen wieder."
-      : streak === 1 && lastFocusDate === yesterdayStr
-      ? "Gestern angefangen — mach heute weiter!"
-      : streak === 1
-      ? "Gut gemacht! Komm morgen wieder."
-      : `${streak} Tage in Folge`;
-
-  // Playable sounds (ohne "none")
-  const sounds = AMBIENT_SOUNDS.filter((s) => s.id !== "none");
+  const [lastSessionId, setLastSessionId] = useState("");
 
   function handleStartSession() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setFocusVisible(true);
+    setProjectPickerVisible(true);
   }
 
   function makeStyles(c: ReturnType<typeof useAppColors>) {
@@ -384,13 +278,11 @@ export default function FokusScreen() {
         paddingBottom: 40,
         gap: 20,
       },
-
-      // Streak-Banner
       streakBanner: {
         flexDirection: "row",
         alignItems: "center",
         backgroundColor:
-          streak > 0
+          effectiveStreak > 0
             ? c.dark
               ? "#2d1a00"
               : "#fffbeb"
@@ -399,7 +291,11 @@ export default function FokusScreen() {
             : "#f8f9fb",
         borderWidth: 1,
         borderColor:
-          streak > 0 ? (c.dark ? "#78350f" : "#fde68a") : c.borderDefault,
+          effectiveStreak > 0
+            ? c.dark
+              ? "#78350f"
+              : "#fde68a"
+            : c.borderDefault,
         borderRadius: 14,
         padding: 14,
         gap: 12,
@@ -409,7 +305,7 @@ export default function FokusScreen() {
         height: 44,
         borderRadius: 12,
         backgroundColor:
-          streak > 0
+          effectiveStreak > 0
             ? c.dark
               ? "#451a03"
               : "#fef3c7"
@@ -423,84 +319,51 @@ export default function FokusScreen() {
       streakValue: {
         fontSize: 12,
         fontWeight: "700",
-        color: streak > 0 ? "#f59e0b" : c.textPrimary,
-        marginTop: 1,
+        color:
+          effectiveStreak > 0
+            ? c.dark
+              ? "#fbbf24"
+              : "#d97706"
+            : c.textSecondary,
       },
-      streakRight: { marginLeft: "auto" as any },
-      streakTotal: { fontSize: 12, color: c.textMuted, textAlign: "right" },
-      streakTotalVal: {
-        fontSize: 15,
-        fontWeight: "700",
-        color: c.textSecondary,
-        textAlign: "right",
+      streakRight: { marginLeft: "auto", alignItems: "flex-end" },
+      streakTotal: { fontSize: 11, color: c.textMuted, fontWeight: "500" },
+      streakTotalVal: { fontSize: 14, fontWeight: "700", color: c.textPrimary },
+      startRow: { flexDirection: "row", gap: 12, alignItems: "center" },
+      startBtn: {
+        flex: 1,
+        height: 56,
+        borderRadius: 18,
+        backgroundColor: "#3b8995",
+        justifyContent: "center",
+        alignItems: "center",
+        flexDirection: "row",
+        gap: 8,
       },
-
-      // Sound
-      sectionLabel: {
-        fontSize: 12,
+      startBtnTx: { fontSize: 16, fontWeight: "700", color: "#fff" },
+      sectionTitle: {
+        fontSize: 13,
         fontWeight: "600",
         color: c.textMuted,
-        textTransform: "uppercase" as any,
-        letterSpacing: 0.6,
-        marginBottom: 10,
+        marginBottom: 8,
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
       },
-      soundRow: { flexDirection: "row", flexWrap: "wrap" as any, gap: 8 },
-
-      // Start-Button
-      startBtn: {
-        backgroundColor: "#3b8995",
-        borderRadius: 18,
-        paddingVertical: 18,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 10,
-      },
-      startBtnText: {
-        fontSize: 17,
-        fontWeight: "700",
-        color: "#fff",
-        letterSpacing: 0.2,
-      },
-
-      // Kontext-Karten
-      card: {
-        backgroundColor: c.cardBg,
-        borderRadius: 14,
-        borderWidth: 1,
-        borderColor: c.borderDefault,
-        padding: 14,
-      },
-      cardHeader: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 12,
-      },
-      cardTitle: { fontSize: 14, fontWeight: "600", color: c.textPrimary },
-      cardLink: { fontSize: 12, color: "#3b8995", fontWeight: "600" },
       emptyHint: {
         fontSize: 13,
         color: c.textMuted,
-        textAlign: "center" as any,
-        paddingVertical: 8,
+        textAlign: "center",
+        paddingVertical: 12,
       },
-      habitsGrid: { gap: 8 },
-      plannerList: { gap: 8 },
-      progressRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-        marginTop: 4,
-      },
+      plannerList: { gap: 6 },
+      progressRow: { flexDirection: "row", alignItems: "center", gap: 8 },
       progressTrack: {
         flex: 1,
         height: 4,
-        backgroundColor: c.dark ? "#334155" : "#f1f5f9",
         borderRadius: 2,
         overflow: "hidden" as any,
       },
-      progressFill: { height: 4, backgroundColor: "#4b60af", borderRadius: 2 },
+      progressFill: { height: 4, borderRadius: 2 },
       progressLabel: {
         fontSize: 12,
         color: c.textMuted,
@@ -513,18 +376,6 @@ export default function FokusScreen() {
   const styles = makeStyles(c);
   const habitRate =
     todayHabits.length > 0 ? habitsCompleted / todayHabits.length : 0;
-  const sessions = useFocusStore((s) => s.sessions);
-  const todayMinutes = useMemo(() => {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    return sessions
-      .filter((s) => s.startedAt >= todayStart.getTime())
-      .reduce(
-        (sum, s) =>
-          sum + Math.floor((s.focusSeconds ?? s.durationSeconds) / 60),
-        0
-      );
-  }, [sessions]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -568,10 +419,10 @@ export default function FokusScreen() {
               <MaterialCommunityIcons
                 name="fire"
                 size={22}
-                color={streak > 0 ? "#f59e0b" : "#94a3b8"}
+                color={effectiveStreak > 0 ? "#f59e0b" : "#94a3b8"}
               />
             </View>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.streakLabel}>Fokus-Streak</Text>
               <Text style={styles.streakValue}>{streakLabel}</Text>
             </View>
@@ -587,51 +438,61 @@ export default function FokusScreen() {
             </View>
           </View>
 
-          {/* ── Tages-Zitat ── */}
-          <QuoteOfTheDay />
+          <WorkoutSyncBanner dark={c.dark} />
+          {/* ── Daily Briefing ── */}
+          <DailyBriefing
+            todayMinutes={todayMinutes}
+            habitsCompleted={habitsCompleted}
+            habitsTotal={todayHabits.length}
+            plannerTotal={plannerTotalCount}
+            streak={effectiveStreak}
+            streakAtRisk={streakAtRisk}
+            dark={c.dark}
+            focusGoalMinutes={90}
+            onStartSession={handleStartSession}
+          />
 
-          {/* ── Sound wählen ── */}
+          {/* ── Sound wählen — FIX: keine inline Pills mehr ── */}
           <Pressable
             onPress={() => setSoundPickerVisible(true)}
             style={({ pressed }) => [
               soundBtn.row,
               {
-                backgroundColor:
-                  selectedSound !== "none"
-                    ? c.dark
-                      ? "#0c2430"
-                      : "#f0fbfc"
-                    : c.dark
-                    ? "#1e293b"
-                    : "#f8f9fb",
-                borderColor:
-                  selectedSound !== "none" ? "#3b8995" : c.borderDefault,
+                backgroundColor: soundActive
+                  ? c.dark
+                    ? "#0c2430"
+                    : "#f0fbfc"
+                  : c.dark
+                  ? "#1e293b"
+                  : "#f8f9fb",
+                borderColor: soundActive ? "#3b8995" : c.borderDefault,
               },
               pressed && { opacity: 0.8 },
             ]}
           >
+            {/* Icon */}
             <View
               style={[
                 soundBtn.iconWrap,
                 {
-                  backgroundColor:
-                    selectedSound !== "none"
-                      ? "#3b8995"
-                      : c.dark
-                      ? "#334155"
-                      : "#e2e8f0",
+                  backgroundColor: soundActive
+                    ? "#3b8995"
+                    : c.dark
+                    ? "#334155"
+                    : "#e2e8f0",
                 },
               ]}
             >
               <Ionicons
                 name={
-                  (AMBIENT_SOUNDS.find((s) => s.id === selectedSound)
-                    ?.icon as any) ?? "volume-mute-outline"
+                  (currentSoundConfig?.icon as any) ?? "volume-mute-outline"
                 }
                 size={18}
-                color={selectedSound !== "none" ? "#fff" : c.textMuted}
+                color={soundActive ? "#fff" : c.textMuted}
               />
             </View>
+
+            {/* Text */}
             <View style={{ flex: 1 }}>
               <Text style={[soundBtn.label, { color: c.textMuted }]}>
                 Ambient Sound
@@ -639,119 +500,62 @@ export default function FokusScreen() {
               <Text
                 style={[
                   soundBtn.value,
-                  {
-                    color: selectedSound !== "none" ? "#3b8995" : c.textPrimary,
-                  },
+                  { color: soundActive ? "#3b8995" : c.textPrimary },
                 ]}
               >
-                {AMBIENT_SOUNDS.find((s) => s.id === selectedSound)?.label ??
-                  "Kein Sound"}
+                {currentSoundConfig?.label ?? "Kein Sound"}
               </Text>
             </View>
+
+            {/* Chevron — kein Pill-Overflow mehr */}
             <Ionicons name="chevron-forward" size={16} color={c.textMuted} />
           </Pressable>
 
-          {/* ── Session starten + Einstellungen ── */}
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          {/* ── Session starten ── */}
+          <View style={styles.startRow}>
             <Pressable
+              onPress={handleStartSession}
               style={({ pressed }) => [
                 styles.startBtn,
-                { flex: 1 },
-                pressed && { opacity: 0.88 },
+                pressed && { opacity: 0.85 },
               ]}
-              onPress={handleStartSession}
             >
-              <Ionicons name="play-circle" size={24} color="#fff" />
-              <Text style={styles.startBtnText}>Session starten</Text>
+              <Ionicons name="play" size={18} color="#fff" />
+              <Text style={styles.startBtnTx}>Session starten</Text>
             </Pressable>
+
             <Pressable
-              onPress={() => setSettingsVisible(true)}
-              style={({ pressed }) => [
+              onPress={() => setCoFocusVisible(true)}
+              style={[
                 startSettings.btn,
                 {
-                  backgroundColor: c.dark ? "#1e293b" : "#f1f5f9",
+                  backgroundColor: c.dark ? "#1e293b" : "#f8f9fb",
                   borderColor: c.borderDefault,
                 },
-                pressed && { opacity: 0.75 },
               ]}
+              hitSlop={8}
             >
-              <Ionicons
-                name="settings-outline"
-                size={20}
-                color={c.textSecondary}
-              />
+              <Ionicons name="people-outline" size={20} color={c.textMuted} />
             </Pressable>
-          </View>
 
-          {/* ── Habits heute ── */}
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Habits heute</Text>
-              <Pressable onPress={() => router.push("/add")} hitSlop={8}>
-                <Text style={styles.cardLink}>+ Habit</Text>
-              </Pressable>
-            </View>
-
-            {todayHabits.length === 0 ? (
-              <Text style={styles.emptyHint}>
-                Noch keine Habits — erstelle dein erstes
-              </Text>
-            ) : (
-              <>
-                <View style={styles.habitsGrid}>
-                  {todayHabits.slice(0, 5).map(({ habit, completed }) => (
-                    <HabitChip
-                      key={habit.id}
-                      title={habit.title}
-                      completed={completed}
-                      category={habit.category}
-                      customCategoryId={habit.customCategoryId} // ← NEU
-                      onToggle={() => habitActions.toggleCheckIn(habit.id)}
-                      dark={c.dark}
-                    />
-                  ))}
-                  {todayHabits.length > 5 && (
-                    <Text style={[styles.emptyHint, { marginTop: 0 }]}>
-                      +{todayHabits.length - 5} weitere
-                    </Text>
-                  )}
-                </View>
-                {todayHabits.length > 0 && (
-                  <View style={styles.progressRow}>
-                    <View style={styles.progressTrack}>
-                      <View
-                        style={[
-                          styles.progressFill,
-                          { width: `${Math.round(habitRate * 100)}%` },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.progressLabel}>
-                      {habitsCompleted}/{todayHabits.length}
-                    </Text>
-                  </View>
-                )}
-              </>
-            )}
+            <Pressable
+              onPress={() => setSettingsVisible(true)}
+              style={[
+                startSettings.btn,
+                {
+                  backgroundColor: c.dark ? "#1e293b" : "#f8f9fb",
+                  borderColor: c.borderDefault,
+                },
+              ]}
+              hitSlop={8}
+            >
+              <Ionicons name="settings-outline" size={20} color={c.textMuted} />
+            </Pressable>
           </View>
 
           {/* ── Heute geplant ── */}
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Heute geplant</Text>
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: "/planner/add",
-                    params: { date: today },
-                  })
-                }
-                hitSlop={8}
-              >
-                <Text style={styles.cardLink}>+ Eintrag</Text>
-              </Pressable>
-            </View>
-
+          <View>
+            <Text style={styles.sectionTitle}>Heute geplant</Text>
             {plannerToday.length === 0 ? (
               <Text style={styles.emptyHint}>
                 Nichts geplant — plane deinen Tag
@@ -764,7 +568,7 @@ export default function FokusScreen() {
                     title={entry.title}
                     startTime={entry.startTime}
                     category={entry.category}
-                    customCategoryId={entry.customCategoryId} // ← NEU
+                    customCategoryId={entry.customCategoryId}
                     done={!!entry.doneAt}
                     onPress={() => plannerActions.toggleDone(entry.id)}
                     dark={c.dark}
@@ -773,10 +577,72 @@ export default function FokusScreen() {
               </View>
             )}
           </View>
+
+          {/* ── Habits heute ── */}
+          {todayHabits.length > 0 && (
+            <View>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={styles.sectionTitle}>Habits heute</Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: c.textMuted,
+                    fontWeight: "600",
+                  }}
+                >
+                  {habitsCompleted}/{todayHabits.length}
+                </Text>
+              </View>
+              <View style={styles.progressRow}>
+                <View
+                  style={[
+                    styles.progressTrack,
+                    { backgroundColor: c.dark ? "#1e293b" : "#e2e8f0" },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${Math.round(habitRate * 100)}%` as any,
+                        backgroundColor:
+                          habitRate === 1
+                            ? "#10b981"
+                            : habitRate >= 0.5
+                            ? "#4b60af"
+                            : "#94a3b8",
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressLabel}>
+                  {Math.round(habitRate * 100)}%
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
       </ScrollView>
 
-      {/* ── Focus Modal ── */}
+      {/* ── Projekt-Auswahl (erscheint vor der Session) ── */}
+      <ProjectPickerSheet
+        visible={projectPickerVisible}
+        onSelectProject={(project) => {
+          setCurrentProject(project); // null = ohne Projekt
+          setProjectPickerVisible(false);
+          setTimeout(() => setFocusVisible(true), 150); // kurze Pause für smooth transition
+        }}
+        onClose={() => setProjectPickerVisible(false)}
+      />
+
+      {/* ── Modals ── */}
       <FocusScreen
         visible={focusVisible}
         entries={plannerToday}
@@ -787,27 +653,22 @@ export default function FokusScreen() {
           if (last?.status === "complete") {
             setLastSessionSeconds(durationSeconds);
             setLastSessionPomodoros(last.pomodoroCount ?? 0);
+            setLastSessionId(last.id); // ← NEU
             setTimeout(() => setRecapVisible(true), 400);
           }
-          // Interrupted: kein Recap, optional ein kurzes Toast/Alert
         }}
       />
-
-      {/* ── Sound Picker ── */}
       <SoundPickerSheet
         visible={soundPickerVisible}
         onClose={() => setSoundPickerVisible(false)}
       />
-
-      {/* ── Session Recap ── */}
       <SessionRecapSheet
         visible={recapVisible}
         durationSeconds={lastSessionSeconds}
         pomodoroCount={lastSessionPomodoros}
+        sessionId={lastSessionId} // ← NEU: State in fokus.tsx anlegen
         onClose={() => setRecapVisible(false)}
       />
-
-      {/* ── Pomodoro Einstellungen ── */}
       <PomodoroSettingsSheet
         visible={settingsVisible}
         onClose={() => setSettingsVisible(false)}

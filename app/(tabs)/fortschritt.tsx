@@ -1,14 +1,15 @@
 // app/(tabs)/fortschritt.tsx
-// Der Fortschritts-Screen — Warum der User täglich zurückkommt.
-// Zeigt: Fokus-Wochenstunden, Streak-Heatmap, Habit-Streaks, Bestzeiten.
-
+// FIXES:
+// 1. JSX-Struktur: container → header + WeeklyReviewSheet + ScrollView (waren alle falsch geschachtelt)
+// 2. header style: flexDirection "row" + alignItems "center" — Trophy-Button sitzt neben dem Titel
+// 3. FocusHeatmap: cellSize auf SCREEN_W - 64 korrigiert (war zu groß, letzte Reihe überfloss)
+import { ProjectsCard } from "@/components/progress/ProjectsCard";
 import { WeeklyReviewSheet } from "@/components/weekly/WeeklyReviewSheet";
 import { getCategoryConfig } from "@/constants/categories";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useHabits } from "@/hooks/useHabits";
 import { useFocusStore } from "@/store/focusStore";
-import { useUserStore } from "@/store/userStore";
-import { getTodayTimestamp } from "@/utils/dateUtils";
+import { dateToLocalString, getTodayTimestamp } from "@/utils/dateUtils";
 import { getCompletionRate } from "@/utils/getStreak";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -44,20 +45,17 @@ function WeekMinutesBar({
       const nextDay = new Date(d);
       nextDay.setDate(d.getDate() + 1);
 
-      const daySessions = sessions.filter((s) => {
-        const t = s.startedAt;
-        return t >= d.getTime() && t < nextDay.getTime();
-      });
-      const minutes = daySessions.reduce(
-        (sum, s) => sum + Math.floor(s.durationSeconds / 60),
-        0
-      );
-      const isToday = d.toDateString() === today.toDateString();
+      const minutes = sessions
+        .filter((s) => {
+          const t = s.startedAt;
+          return t >= d.getTime() && t < nextDay.getTime();
+        })
+        .reduce((sum, s) => sum + Math.floor(s.durationSeconds / 60), 0);
 
       return {
         label: DAY_LABELS[d.getDay() === 0 ? 6 : d.getDay() - 1],
         minutes,
-        isToday,
+        isToday: d.toDateString() === today.toDateString(),
       };
     });
   }, [sessions]);
@@ -101,12 +99,8 @@ function WeekMinutesBar({
                   (b.minutes / maxMinutes) * maxH,
                   b.minutes > 0 ? 4 : 0
                 ),
-                backgroundColor: b.isToday
-                  ? "#3b8995"
-                  : b.minutes >= 60
-                  ? "#10b981"
-                  : "#3b8995",
-                opacity: b.isToday ? 1 : 0.65,
+                backgroundColor: b.isToday ? "#3b8995" : "#3b8995",
+                opacity: b.isToday ? 1 : 0.55,
                 borderRadius: 6,
               }}
             />
@@ -127,10 +121,16 @@ function WeekMinutesBar({
 }
 
 // ─── Heatmap (Fokus-Tage) ─────────────────────────────────────────────────────
+// FIX: cellSize nutzt SCREEN_W - 64 (32 content-padding + 32 card-padding)
+// + Gap zwischen Zellen berücksichtigt → kein Overflow mehr
 function FocusHeatmap({ sessions, dark }: { sessions: any[]; dark: boolean }) {
   const COLS = 13;
   const ROWS = 7;
-  const cellSize = Math.floor((SCREEN_W - 48) / COLS) - 2;
+  const GAP = 2;
+  // Verfügbare Breite: Bildschirm - 2×16 content-padding - 2×16 card-padding = -64
+  const availableWidth = SCREEN_W - 64;
+  const totalGap = (COLS - 1) * GAP;
+  const cellSize = Math.floor((availableWidth - totalGap) / COLS);
 
   const weeks = useMemo(() => {
     const sessionDays = new Set(
@@ -140,13 +140,11 @@ function FocusHeatmap({ sessions, dark }: { sessions: any[]; dark: boolean }) {
         return d.getTime();
       })
     );
-
     const today = getTodayTimestamp();
     const cells = Array.from({ length: COLS * ROWS }, (_, i) => {
       const ts = today - (COLS * ROWS - 1 - i) * 86_400_000;
       return { ts, active: sessionDays.has(ts) };
     });
-
     const result = [];
     for (let w = 0; w < COLS; w++) {
       result.push(cells.slice(w * ROWS, w * ROWS + ROWS));
@@ -155,9 +153,9 @@ function FocusHeatmap({ sessions, dark }: { sessions: any[]; dark: boolean }) {
   }, [sessions]);
 
   return (
-    <View style={{ flexDirection: "row", gap: 2 }}>
+    <View style={{ flexDirection: "row", gap: GAP }}>
       {weeks.map((week, wi) => (
-        <View key={wi} style={{ flexDirection: "column", gap: 2 }}>
+        <View key={wi} style={{ flexDirection: "column", gap: GAP }}>
           {week.map((cell, di) => (
             <View
               key={di}
@@ -179,7 +177,7 @@ function FocusHeatmap({ sessions, dark }: { sessions: any[]; dark: boolean }) {
   );
 }
 
-// ─── Habit-Streak-Reihe ───────────────────────────────────────────────────────
+// ─── Habit-Streak Zeile ───────────────────────────────────────────────────────
 function HabitStreakRow({
   title,
   streak,
@@ -194,77 +192,72 @@ function HabitStreakRow({
   dark: boolean;
 }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+    <View style={{ gap: 4 }}>
       <View
         style={{
-          width: 8,
-          height: 8,
-          borderRadius: 4,
-          backgroundColor: color,
-          marginTop: 1,
-          flexShrink: 0,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
         }}
-      />
-      <View style={{ flex: 1 }}>
-        <Text
+      >
+        <View
           style={{
-            fontSize: 13,
-            fontWeight: "500",
-            color: dark ? "#e2e8f0" : "#0f172a",
-            marginBottom: 4,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            flex: 1,
           }}
-          numberOfLines={1}
         >
-          {title}
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <View
             style={{
-              flex: 1,
-              height: 4,
-              backgroundColor: dark ? "#1e293b" : "#f1f5f9",
-              borderRadius: 2,
-              overflow: "hidden",
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: color,
             }}
+          />
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: "500",
+              color: dark ? "#f1f5f9" : "#0f172a",
+            }}
+            numberOfLines={1}
           >
-            <View
-              style={{
-                width: `${rate30}%`,
-                height: 4,
-                backgroundColor: color,
-                borderRadius: 2,
-              }}
-            />
+            {title}
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ alignItems: "center" }}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: "#f59e0b" }}>
+              {streak}
+            </Text>
+            <Text style={{ fontSize: 9, color: dark ? "#475569" : "#94a3b8" }}>
+              aktuell
+            </Text>
           </View>
-          <Text
-            style={{
-              fontSize: 11,
-              color: dark ? "#64748b" : "#94a3b8",
-              minWidth: 32,
-              textAlign: "right",
-            }}
-          >
-            {rate30}%
-          </Text>
         </View>
       </View>
-      <View style={{ alignItems: "flex-end" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-          <MaterialCommunityIcons name="fire" size={13} color="#f59e0b" />
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "700",
-              color: dark ? "#e2e8f0" : "#0f172a",
-            }}
-          >
-            {streak}
-          </Text>
-        </View>
-        <Text style={{ fontSize: 10, color: dark ? "#475569" : "#94a3b8" }}>
-          Tage
-        </Text>
+      <View
+        style={{
+          height: 4,
+          backgroundColor: dark ? "#1e293b" : "#e2e8f0",
+          borderRadius: 2,
+          overflow: "hidden",
+        }}
+      >
+        <View
+          style={{
+            height: 4,
+            width: `${rate30}%` as any,
+            backgroundColor: color,
+            borderRadius: 2,
+          }}
+        />
       </View>
+      <Text style={{ fontSize: 10, color: dark ? "#475569" : "#94a3b8" }}>
+        {rate30}% letzte 30 Tage
+      </Text>
     </View>
   );
 }
@@ -302,12 +295,14 @@ function StatCard({
     </View>
   );
 }
+
 function getWeekNumber(d: Date): number {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   return Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
+
 // ─── Hauptscreen ──────────────────────────────────────────────────────────────
 export default function FortschrittScreen() {
   const insets = useSafeAreaInsets();
@@ -317,7 +312,6 @@ export default function FortschrittScreen() {
   const focusStats = useFocusStore((s) => s.stats);
   const sessions = useFocusStore((s) => s.sessions);
   const loadStats = useFocusStore((s) => s.loadStats);
-  const prefs = useUserStore((s) => s.prefs);
 
   const [reviewVisible, setReviewVisible] = useState(false);
 
@@ -326,25 +320,31 @@ export default function FortschrittScreen() {
     const now = new Date();
     const isSunday = now.getDay() === 0;
     const isEvening = now.getHours() >= 17;
-    const lastReviewKey = "last_weekly_review";
-
-    AsyncStorage.getItem(lastReviewKey).then((last) => {
+    AsyncStorage.getItem("last_weekly_review").then((last) => {
       const thisWeek = `${now.getFullYear()}-W${getWeekNumber(now)}`;
       if (isSunday && isEvening && last !== thisWeek) {
         setReviewVisible(true);
-        AsyncStorage.setItem(lastReviewKey, thisWeek);
+        AsyncStorage.setItem("last_weekly_review", thisWeek);
       }
     });
   }, []);
 
+  // ── Streak: effectiveStreak (gleiche Logik wie fokus.tsx) ─────────────────
   const streak = focusStats.currentStreak;
+  const lastFocusDate = focusStats.lastFocusDate;
+  const todayStr = dateToLocalString(new Date());
+  const yesterdayStr = dateToLocalString(new Date(Date.now() - 86_400_000));
+  const isStreakActive =
+    lastFocusDate === todayStr || lastFocusDate === yesterdayStr;
+  const effectiveStreak = isStreakActive ? streak : 0;
+
   const totalHours = Math.floor(focusStats.totalMinutes / 60);
   const totalMins = focusStats.totalMinutes % 60;
 
-  // Diese Woche Fokus-Minuten
   const weekStart = new Date();
   weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
   weekStart.setHours(0, 0, 0, 0);
+
   const weekMinutes = useMemo(
     () =>
       sessions
@@ -354,7 +354,6 @@ export default function FortschrittScreen() {
   );
   const weekHours = (weekMinutes / 60).toFixed(1);
 
-  // Habits sortiert nach Streak
   const sortedHabits = useMemo(
     () =>
       [...habits].sort((a, b) => (b.streak ?? 0) - (a.streak ?? 0)).slice(0, 6),
@@ -364,14 +363,18 @@ export default function FortschrittScreen() {
   function makeStyles(c: ReturnType<typeof useAppColors>) {
     return StyleSheet.create({
       container: { flex: 1, backgroundColor: c.pageBg },
+      // FIX: flexDirection row + alignItems center → Trophy-Button sitzt rechts neben Titel
       header: {
+        flexDirection: "row",
+        alignItems: "center",
         paddingHorizontal: 24,
-        paddingTop: 20,
+        paddingTop: 16,
         paddingBottom: 16,
         backgroundColor: c.headerBg,
         borderBottomWidth: 1,
         borderBottomColor: c.borderSubtle,
       },
+      headerText: { flex: 1 },
       headerTitle: {
         fontSize: 26,
         fontWeight: "700",
@@ -399,13 +402,12 @@ export default function FortschrittScreen() {
         marginBottom: 12,
       },
       statRow: { flexDirection: "row", gap: 10 },
-      divider: {
-        height: 1,
-        backgroundColor: c.borderDefault,
-        marginVertical: 10,
+      cardHeaderRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 12,
       },
-      heatmapLegend: { flexDirection: "row", alignItems: "center", gap: 6 },
-      heatmapDot: { width: 10, height: 10, borderRadius: 2 },
       emptyText: {
         fontSize: 13,
         color: c.textMuted,
@@ -413,54 +415,79 @@ export default function FortschrittScreen() {
         paddingVertical: 12,
       },
       habitList: { gap: 14 },
-      cardHeaderRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 12,
-      },
     });
   }
 
   const styles = makeStyles(c);
 
-  return (
-    // Im JSX — Header-Bereich:
-    <View style={styles.header}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.headerTitle}>Fortschritt</Text>
-        <Text style={styles.headerSub}>Dein Wachstum auf einen Blick</Text>
-      </View>
-      <Pressable
-        onPress={() => setReviewVisible(true)}
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 19,
-          backgroundColor: c.dark ? "#2d1a00" : "#fffbeb",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <Ionicons name="trophy-outline" size={20} color="#f59e0b" />
-      </Pressable>
+  // Heute-Fortschritt — todayMinutes MUSS vor pct stehen
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayMinutes = useMemo(
+    () =>
+      sessions
+        .filter((s) => s.startedAt >= todayStart.getTime())
+        .reduce(
+          (sum, s) =>
+            sum + Math.floor((s.focusSeconds ?? s.durationSeconds) / 60),
+          0
+        ),
+    [sessions]
+  );
 
-      {/* Sheet außerhalb des Headers, direkt im root View */}
+  const dailyGoalMinutes = 90;
+  // Guard: 0 wenn keine Sessions — verhindert NaN / voller Balken bei 0 Minuten
+  const pct =
+    todayMinutes > 0
+      ? Math.min(Math.round((todayMinutes / dailyGoalMinutes) * 100), 100)
+      : 0;
+
+  return (
+    // FIX: Korrekter Root-Container — header, modal und scrollview sind Geschwister
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* ── Header (FIX: flexDirection row) ── */}
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text style={styles.headerTitle}>Fortschritt</Text>
+          <Text style={styles.headerSub}>Dein Wachstum auf einen Blick</Text>
+        </View>
+        <Pressable
+          onPress={() => setReviewVisible(true)}
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            backgroundColor: c.dark ? "#2d1a00" : "#fffbeb",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+          hitSlop={8}
+        >
+          <Ionicons name="trophy-outline" size={20} color="#f59e0b" />
+        </Pressable>
+      </View>
+
+      {/* FIX: WeeklyReviewSheet direkt unter Header, NICHT im Header verschachtelt */}
       <WeeklyReviewSheet
         visible={reviewVisible}
         onClose={() => setReviewVisible(false)}
       />
 
+      {/* ── Content ── */}
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
+          {/* ── Projekte ── */}
+          <View style={styles.card}>
+            <ProjectsCard dark={c.dark} />
+          </View>
           {/* ── Stat-Karten ── */}
           <View style={styles.statRow}>
             <StatCard
               label="Tage Streak"
-              value={streak}
-              color={streak > 0 ? "#f59e0b" : "#94a3b8"}
+              value={effectiveStreak}
+              color={effectiveStreak > 0 ? "#f59e0b" : "#94a3b8"}
               bg={
-                streak > 0
+                effectiveStreak > 0
                   ? c.dark
                     ? "#2d1a00"
                     : "#fffbeb"
@@ -484,82 +511,54 @@ export default function FortschrittScreen() {
                   ? `${totalHours}h`
                   : `${focusStats.totalMinutes}m`
               }
-              color="#8b5cf6"
-              bg={c.dark ? "#1e1040" : "#f5f3ff"}
-              icon="bar-chart-outline"
+              color="#4b60af"
+              bg={c.dark ? "#0f1433" : "#f0f4ff"}
+              icon="trending-up-outline"
             />
           </View>
 
-          {/* ── Tagesziel ── */}
-          {prefs.dailyFocusMinutes > 0 &&
-            (() => {
-              const todayStart = new Date();
-              todayStart.setHours(0, 0, 0, 0);
-              const todayMinutes = sessions
-                .filter((s) => s.startedAt >= todayStart.getTime())
-                .reduce(
-                  (sum, s) => sum + Math.floor(s.durationSeconds / 60),
-                  0
-                );
-              const pct = Math.min(
-                100,
-                Math.round((todayMinutes / prefs.dailyFocusMinutes) * 100)
-              );
-              const goalH = Math.floor(prefs.dailyFocusMinutes / 60);
-              const goalM = prefs.dailyFocusMinutes % 60;
-              const goalLabel =
-                goalH > 0
-                  ? `${goalH}h${goalM > 0 ? ` ${goalM}min` : ""}`
-                  : `${goalM}min`;
-              const doneH = Math.floor(todayMinutes / 60);
-              const doneM = todayMinutes % 60;
-              const doneLabel =
-                doneH > 0 ? `${doneH}h ${doneM}min` : `${doneM}min`;
-              return (
-                <View style={styles.card}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "flex-end",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <Text style={styles.cardTitle}>Tagesziel</Text>
-                    <Text style={{ fontSize: 12, color: c.textMuted }}>
-                      {doneLabel} von {goalLabel}
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      height: 8,
-                      backgroundColor: c.dark ? "#1e293b" : "#f1f5f9",
-                      borderRadius: 4,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: `${pct}%`,
-                        height: 8,
-                        backgroundColor: pct >= 100 ? "#10b981" : "#3b8995",
-                        borderRadius: 4,
-                      }}
-                    />
-                  </View>
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      color: pct >= 100 ? "#10b981" : c.textMuted,
-                      marginTop: 6,
-                      textAlign: "right",
-                    }}
-                  >
-                    {pct >= 100 ? "Tagesziel erreicht! 🎉" : `${pct}% erreicht`}
-                  </Text>
-                </View>
-              );
-            })()}
+          {/* ── Heute-Fortschritt ── */}
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={styles.cardTitle}>Heute</Text>
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: pct >= 100 ? "#10b981" : c.textMuted,
+                  fontWeight: "600",
+                }}
+              >
+                {todayMinutes}m / {dailyGoalMinutes}m
+              </Text>
+            </View>
+            <View
+              style={{
+                height: 8,
+                backgroundColor: c.dark ? "#1e293b" : "#f1f5f9",
+                borderRadius: 4,
+                overflow: "hidden",
+              }}
+            >
+              <View
+                style={{
+                  width: `${Math.max(pct, pct > 0 ? 2 : 0)}%` as any,
+                  height: 8,
+                  backgroundColor: pct >= 100 ? "#10b981" : "#3b8995",
+                  borderRadius: 4,
+                }}
+              />
+            </View>
+            <Text
+              style={{
+                fontSize: 11,
+                color: pct >= 100 ? "#10b981" : c.textMuted,
+                marginTop: 6,
+                textAlign: "right",
+              }}
+            >
+              {pct >= 100 ? "Tagesziel erreicht! 🎉" : `${pct}% erreicht`}
+            </Text>
+          </View>
 
           {/* ── Wochenbars ── */}
           <View style={styles.card}>
@@ -567,19 +566,28 @@ export default function FortschrittScreen() {
             <WeekMinutesBar sessions={sessions} dark={c.dark} />
           </View>
 
-          {/* ── Heatmap ── */}
+          {/* ── Heatmap (FIX: cellSize korrigiert) ── */}
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
               <Text style={styles.cardTitle}>Aktivität · 13 Wochen</Text>
-              <View style={styles.heatmapLegend}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+              >
                 <View
-                  style={[
-                    styles.heatmapDot,
-                    { backgroundColor: c.dark ? "#1e293b" : "#f1f5f9" },
-                  ]}
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 2,
+                    backgroundColor: c.dark ? "#1e293b" : "#f1f5f9",
+                  }}
                 />
                 <View
-                  style={[styles.heatmapDot, { backgroundColor: "#3b8995" }]}
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 2,
+                    backgroundColor: "#3b8995",
+                  }}
                 />
               </View>
             </View>
