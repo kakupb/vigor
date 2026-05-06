@@ -13,11 +13,20 @@
       "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/28a83525-f119-44d7-a682-9dc17fb6ccea"
     },
+    "splash": {
+  "image": "./assets/images/splash-icon.png",
+  "imageWidth": 200,
+  "resizeMode": "contain",
+  "backgroundColor": "#ffffff",
+  "dark": {
+    "backgroundColor": "#000000"
+  }
+},
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "ios": {
-      "buildNumber": "5",
+      "buildNumber": "6",
       "supportsTablet": true,
       "bundleIdentifier": "com.yakubadar.vigor",
       "entitlements": {
@@ -97,7 +106,8 @@
       "expo-video",
       "expo-secure-store",
       "expo-audio",
-      "expo-asset"
+      "expo-asset",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

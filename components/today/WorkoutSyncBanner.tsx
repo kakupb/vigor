@@ -3,23 +3,22 @@
 // Wird gezeigt bis der Nutzer Ja oder Nein antwortet.
 // Danach: bei "Ja" werden alle zukünftigen Workouts automatisch in den Planner eingetragen.
 //
-// Warum nicht im Onboarding: zu viel Friction bei bereits 6 Slides.
-// Hier ist es kontextuell, nicht-blockierend und jederzeit sichtbar.
+// FIX: Auth wird vor dem Sync angefordert — vorher war workouts leer
+// weil HealthKit noch nicht autorisiert war wenn der User "Ja" drückt.
 
-import { useWorkoutHistory } from "@/hooks/useHealthData";
+import { useHealthAuth, useWorkoutHistory } from "@/hooks/useHealthData";
 import { usePlannerStore } from "@/store/plannerStore";
 import { dateToLocalString } from "@/utils/dateUtils";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 const PREF_KEY = "workout_sync_answered_v1";
 const SYNCED_IDS_KEY = "workout_synced_ids_v1";
 
-// Öffentlich: kann von anderen Stellen (z.B. app.useEffect) aufgerufen werden
-// um neue Workouts beim App-Start automatisch zu synchronisieren
+// ─── Öffentliche Hilfsfunktionen ──────────────────────────────────────────────
 export async function isWorkoutSyncEnabled(): Promise<boolean> {
   try {
     const val = await AsyncStorage.getItem(PREF_KEY);
@@ -44,51 +43,74 @@ export async function markWorkoutSynced(id: string): Promise<void> {
   await AsyncStorage.setItem(SYNCED_IDS_KEY, JSON.stringify([...existing, id]));
 }
 
-type Props = {
-  dark: boolean;
-};
+// ─── Workout-Label-Mapping ────────────────────────────────────────────────────
+function getWorkoutLabel(typeNum: number): string {
+  const map: Record<number, string> = {
+    37: "Laufen",
+    16: "Laufen",
+    13: "Radfahren",
+    14: "Radfahren",
+    20: "Krafttraining",
+    63: "Krafttraining",
+    48: "Yoga",
+    57: "HIIT",
+    52: "Gehen",
+    46: "Schwimmen",
+    82: "Schwimmen",
+  };
+  return map[typeNum] ?? "Training";
+}
+
+type Props = { dark: boolean };
 
 export function WorkoutSyncBanner({ dark }: Props) {
-  const [answered, setAnswered] = useState<boolean | null>(null); // null = noch nicht geladen
+  const [answered, setAnswered] = useState<boolean | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncDone, setSyncDone] = useState(false);
+  const [syncCount, setSyncCount] = useState(0);
+
   const addEntry = usePlannerStore((s) => s.addEntry);
-  const { workouts, isLoading } = useWorkoutHistory(200);
+  const { isAvailable, isAuthorized, requestAuth } = useHealthAuth();
+
+  // reload() erlaubt es uns Workouts nach Auth-Anfrage neu zu laden
+  const { workouts, isLoading, reload } = useWorkoutHistory(200);
+
+  // Wenn Auth erteilt wird → sofort Workouts neu laden
+  const prevAuthorized = useRef(isAuthorized);
+  useEffect(() => {
+    if (!prevAuthorized.current && isAuthorized) {
+      reload();
+    }
+    prevAuthorized.current = isAuthorized;
+  }, [isAuthorized]);
 
   useEffect(() => {
     AsyncStorage.getItem(PREF_KEY).then((val) => {
-      setAnswered(val !== null); // schon beantwortet wenn Wert vorhanden
+      setAnswered(val !== null);
     });
   }, []);
 
-  async function handleYes() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await AsyncStorage.setItem(PREF_KEY, "yes");
-    setAnswered(true);
-    setSyncing(true);
+  // Sobald Workouts geladen sind UND wir gerade syncing → Einträge anlegen
+  const pendingSyncRef = useRef(false);
+  useEffect(() => {
+    if (!pendingSyncRef.current) return;
+    if (isLoading) return;
+    doSync();
+  }, [workouts, isLoading]);
 
-    // Vergangene Workouts importieren (die noch nicht synced sind)
+  async function doSync() {
+    pendingSyncRef.current = false;
     const syncedIds = await getSyncedWorkoutIds();
     const toSync = workouts.filter((w) => !syncedIds.includes(w.id));
 
+    let count = 0;
     for (const w of toSync) {
       const timeStr = (date: Date) =>
         `${String(date.getHours()).padStart(2, "0")}:${String(
           date.getMinutes()
         ).padStart(2, "0")}`;
 
-      const label =
-        w.typeNum === 37 || w.typeNum === 16
-          ? "Laufen"
-          : w.typeNum === 13 || w.typeNum === 14
-          ? "Radfahren"
-          : w.typeNum === 20 || w.typeNum === 63
-          ? "Krafttraining"
-          : w.typeNum === 48
-          ? "Yoga"
-          : w.typeNum === 52
-          ? "Gehen"
-          : `Training`;
+      const label = getWorkoutLabel(w.typeNum);
 
       addEntry({
         title: `🏋️ ${label}`,
@@ -104,13 +126,40 @@ export function WorkoutSyncBanner({ dark }: Props) {
         ]
           .filter(Boolean)
           .join(" · "),
-        doneAt: new Date(w.endDate).toISOString(), // Vergangene Workouts = erledigt
+        doneAt: new Date(w.endDate).toISOString(),
       });
       await markWorkoutSynced(w.id);
+      count++;
     }
 
+    setSyncCount(count);
     setSyncing(false);
     setSyncDone(true);
+  }
+
+  async function handleYes() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await AsyncStorage.setItem(PREF_KEY, "yes");
+    setAnswered(true);
+    setSyncing(true);
+
+    // Noch nicht autorisiert → Auth anfordern
+    // useEffect oben beobachtet isAuthorized → reload() → doSync()
+    if (isAvailable && !isAuthorized) {
+      pendingSyncRef.current = true;
+      requestAuth();
+      return;
+    }
+
+    // Bereits autorisiert aber Workouts noch nicht geladen
+    if (workouts.length === 0 && !isLoading) {
+      pendingSyncRef.current = true;
+      reload();
+      return;
+    }
+
+    // Alles bereit → direkt sync
+    await doSync();
   }
 
   async function handleNo() {
@@ -152,7 +201,9 @@ export function WorkoutSyncBanner({ dark }: Props) {
               {syncing
                 ? "Synchronisiere…"
                 : syncDone
-                ? "✓ Synchronisiert"
+                ? syncCount > 0
+                  ? `✓ ${syncCount} Trainings importiert`
+                  : "✓ Synchronisiert"
                 : "Ja, synchronisieren"}
             </Text>
           </Pressable>

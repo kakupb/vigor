@@ -1,5 +1,4 @@
-
-  {
+{
     "cli": {
       "version": ">= 16.0.0"
     },
@@ -13,31 +12,35 @@
         }
       },
       "preview": {
-        "distribution": "internal",
-        "node": "20.19.4",
-        "ios": {
-          "image": "macos-sequoia-15.3-xcode-16.2"
-        }
+  "distribution": "internal",
+  "node": "20.19.4",
+  "ios": {
+    "image": "macos-sequoia-15.3-xcode-16.2"
+  },
+  "env": {
+    "EXPO_PUBLIC_SUPABASE_URL": "https://ujefsxdppozfhjjoiwmf.supabase.co",
+    "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_078B0ICkaezWRve_MELvjA_oT8wre-Q"
+  }
+},
+    "production": {
+      "node": "20.19.4",
+      "ios": {
+        "simulator": false,
+        "image": "macos-sequoia-15.3-xcode-16.2"
       },
-      "production": {
-        "node": "20.19.4",
-        "ios": {
-          "simulator": false,
-          "image": "macos-sequoia-15.3-xcode-16.2"
-        },
-        "env": {
-          "EXPO_PUBLIC_SUPABASE_URL": "https://ujefsxdppozfhjjoiwmf.supabase.co",
-          "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_078B0ICkaezWRve_MELvjA_oT8wre-Q"
-        }
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://xxxx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "xxx-x"
       }
-    },
-    "submit": {
-      "production": {
-        "ios": {
-          "appleId": "yakubadar99@gmail.com",
-          "ascAppId": "6760257534",
-          "appleTeamId": "U2QV4QR93K"
-        }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "yakubadar99@gmail.com",
+        "ascAppId": "6760257534",
+        "appleTeamId": "U2QV4QR93K"
       }
     }
   }
+}

@@ -380,7 +380,7 @@ export default function FokusScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <OnboardingModal visible={!hasOnboarded} />
+      <OnboardingModal visible={hasOnboarded === false} />
       <MenuSheet visible={menuVisible} onClose={() => setMenuVisible(false)} />
 
       {/* ── Header ── */}

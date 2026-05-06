@@ -2,6 +2,7 @@
 // Der "Mehr"-Screen — alles was nicht Fokus, Fortschritt oder Planen ist.
 // Notizen, Health, Analyse, Einstellungen.
 
+import { SocialScreen } from "@/components/social/SocialScreen";
 import { MenuSheet } from "@/components/today/MenuSheet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useHabits } from "@/hooks/useHabits";
@@ -118,6 +119,7 @@ export default function MehrScreen() {
   const loadNotes = useNoteStore((s) => s.loadNotes);
   const { habits } = useHabits();
   const focusStats = useFocusStore((s) => s.stats);
+  const [socialVisible, setSocialVisible] = useState(false);
 
   useEffect(() => {
     loadNotes();
@@ -183,6 +185,15 @@ export default function MehrScreen() {
             dark={c.dark}
             badge={notes.length > 0 ? notes.length : undefined}
           />
+          <MenuRow
+            icon="people-outline"
+            label="Freunde & Rangliste"
+            subtitle="Lernfreunde hinzufügen, vergleichen"
+            color="#4b60af"
+            bg={c.dark ? "#0f1433" : "#f0f4ff"}
+            onPress={() => setSocialVisible(true)}
+            dark={c.dark}
+          />
 
           {Platform.OS === "ios" && (
             <MenuRow
@@ -224,6 +235,10 @@ export default function MehrScreen() {
           />
         </View>
       </ScrollView>
+      <SocialScreen
+        visible={socialVisible}
+        onClose={() => setSocialVisible(false)}
+      />
     </View>
   );
 }

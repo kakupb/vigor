@@ -30,7 +30,7 @@ const NOTIFICATION_TIMES: Record<FocusTime, { hour: number; minute: number }> =
 
 type UserState = {
   name: string | null;
-  hasOnboarded: boolean;
+  hasOnboarded: boolean | null;
   prefs: UserPrefs;
 
   // Actions
@@ -42,7 +42,7 @@ type UserState = {
 
 export const useUserStore = create<UserState>((set, get) => ({
   name: null,
-  hasOnboarded: false,
+  hasOnboarded: null as boolean | null,
   prefs: DEFAULT_PREFS,
 
   // Onboarding abschließen — speichert alles und plant Benachrichtigung

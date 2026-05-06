@@ -15,9 +15,12 @@ import { getStreak } from "@/utils/getStreak";
 import { isScheduledForToday } from "@/utils/scheduleUtils";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter, useSegments } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { ActivityIndicator, LogBox, View } from "react-native";
+
+SplashScreen.preventAutoHideAsync();
 
 LogBox.ignoreLogs([
   "com.apple.healthkit Code=5",
@@ -112,8 +115,10 @@ export default function RootLayout() {
       loadCustomCategories();
       loadProjects();
       loadSessionNotes();
+      SplashScreen.hideAsync();
       return;
     }
+
     Promise.all([
       initialize(),
       loadUser(),
@@ -122,7 +127,10 @@ export default function RootLayout() {
       loadCustomCategories(),
       loadProjects(),
       loadSessionNotes(),
-    ]);
+    ]).finally(() => {
+      SplashScreen.hideAsync();
+    });
+
     // Weekly Review Notification einmalig planen
     const { name } = useUserStore.getState();
     scheduleWeeklyReviewNotification(name);

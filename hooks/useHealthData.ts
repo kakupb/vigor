@@ -3,9 +3,18 @@ import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 
 let RNHealth: any = null;
+let _healthError: any = null;
 try {
-  RNHealth = require("react-native-health").default;
-} catch {}
+  const mod = require("react-native-health");
+  RNHealth = mod.default ?? mod;
+  if (!RNHealth?.initHealthKit) RNHealth = null;
+} catch (e) {
+  _healthError = e; // ← Fehler festhalten statt still ignorieren
+}
+
+// Temporär:
+console.log("[Health] RNHealth:", !!RNHealth);
+console.log("[Health] Error:", _healthError);
 
 // ─── Permissions ──────────────────────────────────────────────────────────────
 const PERMISSIONS = {
